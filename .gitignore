@@ -11,6 +11,10 @@
 /[Mm]emoryCaptures/
 /[Rr]ecordings/
 
+# Local Unity resources
+/Assets/[Rr]esources/
+/Assets/[Rr]esources.meta
+
 # Local IDE and editor data
 /.vs/
 /.idea/

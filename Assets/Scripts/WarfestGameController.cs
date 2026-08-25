@@ -25,12 +25,26 @@ public sealed class WarfestGameController : MonoBehaviour
     private Text targetText;
     private WarfestLevelCatalog.LevelDefinition level;
     private Sprite pistolSprite;
+    private Sprite pistolBaseSprite;
+
+    private Sprite backgroundSprite;
     private Sprite tableSprite;
     private Sprite cannonBaseSprite;
+    private GameObject[] boxModelPrefabs;
+    private Texture2D[] boxModelTextures;
+    private Material[] boxModelMaterials;
+    private GameObject tableModelPrefab;
+    private Material tableModelMaterial;
+    private readonly List<float> modelTableTopYs = new List<float>();
+    private readonly List<int> blockDepthLayers = new List<int>();
     private Sprite[] blockSprites;
     private int ballCapacity;
     private int remainingBalls;
     private int targetsRemaining;
+
+
+    private bool fireInputArmed;
+    private bool modelPhysicsReleased;
     private bool levelEnded;
     private Vector3 pistolRestLocalPosition;
     private Canvas hudCanvas;
@@ -61,31 +75,169 @@ private void Start()
         RefreshHud();
     }
 
-    private void LoadOriginalSprites()
+private void LoadOriginalSprites()
     {
         Sprite[] pistolSprites = Resources.LoadAll<Sprite>("pistol");
         Sprite[] tables = Resources.LoadAll<Sprite>("table");
-        blockSprites = Resources.LoadAll<Sprite>("blocks");
-        pistolSprite = pistolSprites.Length > 0 ? pistolSprites[0] : null;
-        tableSprite = tables.Length > 0 ? tables[0] : null;
-        if (pistolSprite == null || tableSprite == null || blockSprites == null || blockSprites.Length == 0)
+
+        Texture2D backgroundTexture = Resources.Load<Texture2D>("background");
+        if (backgroundTexture != null)
         {
-            Debug.LogError("Warfest requires the original Resources/pistol, Resources/table, and Resources/blocks sprites.");
+            backgroundSprite = Sprite.Create(
+                backgroundTexture,
+                new Rect(0f, 0f, backgroundTexture.width, backgroundTexture.height),
+                new Vector2(0.5f, 0.5f),
+                100f);
+            backgroundSprite.name = "Gameplay Background";
+        }
+        blockSprites = Resources.LoadAll<Sprite>("blocks");
+
+        for (int i = 0; i < pistolSprites.Length; i++)
+        {
+            if (pistolSprites[i].name == "pistol_0") pistolSprite = pistolSprites[i];
+            if (pistolSprites[i].name == "pistol_1") pistolBaseSprite = pistolSprites[i];
+        }
+        if (pistolSprite == null && pistolSprites.Length > 0) pistolSprite = pistolSprites[0];
+        if (pistolBaseSprite == null && pistolSprites.Length > 1) pistolBaseSprite = pistolSprites[1];
+
+        boxModelPrefabs = new[]
+        {
+            Resources.Load<GameObject>("box/base_basic_shaded"),
+            Resources.Load<GameObject>("box2/base_basic_shaded"),
+            Resources.Load<GameObject>("box3/base_basic_shaded"),
+            Resources.Load<GameObject>("long_box/base_basic_shaded"),
+            Resources.Load<GameObject>("soldier/base_basic_shaded"),
+            Resources.Load<GameObject>("cannister/base_basic_shaded"),
+        };
+        boxModelTextures = new[]
+        {
+            Resources.Load<Texture2D>("box/shaded"),
+            Resources.Load<Texture2D>("box2/shaded"),
+            Resources.Load<Texture2D>("box3/shaded"),
+            Resources.Load<Texture2D>("long_box/shaded"),
+            Resources.Load<Texture2D>("soldier/shaded"),
+            Resources.Load<Texture2D>("cannister/shaded"),
+        };
+        boxModelMaterials = new Material[boxModelTextures.Length];
+        for (int i = 0; i < boxModelTextures.Length; i++)
+        {
+            boxModelMaterials[i] = CreateBrightModelMaterial(boxModelTextures[i], "Warfest Block " + (i + 1));
+        }
+
+        tableModelPrefab = Resources.Load<GameObject>("table/base_basic_shaded");
+        tableModelMaterial = CreateBrightModelMaterial(Resources.Load<Texture2D>("table/shaded"), "Warfest Table");
+        tableSprite = tables.Length > 0 ? tables[0] : null;
+
+        if (pistolSprite == null || pistolBaseSprite == null || tableSprite == null || blockSprites == null || blockSprites.Length == 0)
+        {
+            Debug.LogError("Warfest requires both pistol sprites plus the original table and blocks sprites.");
+        }
+        if (!HasAnyBoxPrefab())
+        {
+            Debug.LogError("The 3D crate levels require Resources/box, box2, box3, long_box, or soldier models.");
+        }
+        if (tableModelPrefab == null)
+        {
+            Debug.LogError("The 3D crate levels require Resources/table/base_basic_shaded.fbx.");
         }
     }
+
+    private bool HasAnyBoxPrefab()
+    {
+        if (boxModelPrefabs == null) return false;
+        for (int i = 0; i < boxModelPrefabs.Length; i++)
+        {
+            if (boxModelPrefabs[i] != null) return true;
+        }
+        return false;
+    }
+
+    // Returns the requested crate skin, falling back to the first available model.
+    private GameObject GetBoxPrefab(int variant)
+    {
+        if (boxModelPrefabs == null || boxModelPrefabs.Length == 0) return null;
+        if (variant >= 0 && variant < boxModelPrefabs.Length && boxModelPrefabs[variant] != null)
+        {
+            return boxModelPrefabs[variant];
+        }
+        for (int i = 0; i < boxModelPrefabs.Length; i++)
+        {
+            if (boxModelPrefabs[i] != null) return boxModelPrefabs[i];
+        }
+        return null;
+    }
+
+private Material CreateBrightModelMaterial(Texture2D texture, string materialName)
+    {
+        if (texture == null) return null;
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null) shader = Shader.Find("Sprites/Default");
+        if (shader == null) return null;
+
+        Material material = new Material(shader);
+        material.name = materialName;
+        material.mainTexture = texture;
+        if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
+        Color exposure = new Color(1.45f, 1.45f, 1.45f, 1f);
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", exposure);
+        material.color = exposure;
+        material.enableInstancing = true;
+        return material;
+    }
+
+    private Material GetBoxMaterial(int variant)
+    {
+        if (boxModelMaterials == null || boxModelMaterials.Length == 0) return null;
+        if (variant >= 0 && variant < boxModelMaterials.Length && boxModelMaterials[variant] != null)
+        {
+            return boxModelMaterials[variant];
+        }
+        for (int i = 0; i < boxModelMaterials.Length; i++)
+        {
+            if (boxModelMaterials[i] != null) return boxModelMaterials[i];
+        }
+        return null;
+    }
+
+    private static void ApplyModelMaterial(GameObject model, Material material)
+    {
+        if (model == null || material == null) return;
+        Renderer[] renderers = model.GetComponentsInChildren<Renderer>();
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            renderers[i].sharedMaterial = material;
+        }
+    }
+
 
 private void Update()
     {
         ApplyCanvasScale();
         ApplySafeArea();
-        if (levelEnded || gameplayCamera == null || muzzle == null) return;
-        if (TryGetPointer(out Vector2 position, out bool pressed) && pressed)
-        {
-            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
-            AimAt(position);
-            Fire();
-        }
         UpdateRecoil();
+
+        if (levelEnded || gameplayCamera == null || muzzle == null) return;
+
+        if (!TryGetPointer(out Vector2 position, out bool held, out bool pressedThisFrame))
+        {
+            fireInputArmed = true;
+            return;
+        }
+
+        // A complete release is required before every shot. This prevents a held touch,
+        // play-mode focus change, or stale pointer state from ever auto-firing.
+        if (!held)
+        {
+            fireInputArmed = true;
+            return;
+        }
+        if (!fireInputArmed || !pressedThisFrame) return;
+
+        fireInputArmed = false;
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+
+        AimAt(position);
+        Fire();
     }
 
     private void EnsureEventSystem()
@@ -110,14 +262,31 @@ private void EnsureCamera()
         gameplayCamera.backgroundColor = LightBackground;
     }
 
-    private void BuildWorld()
+private void BuildWorld()
     {
+
         worldRoot = new GameObject("Runtime Level // " + level.number.ToString("00")).transform;
-        CreateTable();
-        List<WarfestLevelCatalog.BlockSpec> specs = new List<WarfestLevelCatalog.BlockSpec>();
-        WarfestLevelCatalog.FillLayout(level.number - 1, specs);
-        targetsRemaining = specs.Count;
-        for (int i = 0; i < specs.Count; i++) CreateBlock(specs[i], i);
+        CreateBackground();
+        bool isModelLevel = level.number >= 1 && level.number <= WarfestLevelCatalog.AuthoredLevelCount;
+        bool canBuildModels = isModelLevel && tableModelPrefab != null && HasAnyBoxPrefab();
+
+        if (canBuildModels)
+        {
+            List<WarfestLevelCatalog.ModelTableSpec> tableSpecs = new List<WarfestLevelCatalog.ModelTableSpec>();
+            WarfestLevelCatalog.FillModelTables(level.number - 1, tableSpecs);
+            modelTableTopYs.Clear();
+            for (int i = 0; i < tableSpecs.Count; i++) CreateModelTable(tableSpecs[i], i);
+            BuildModelLayout(level.number);
+        }
+        else
+        {
+            CreateTable();
+            List<WarfestLevelCatalog.BlockSpec> specs = new List<WarfestLevelCatalog.BlockSpec>();
+            WarfestLevelCatalog.FillLayout(level.number - 1, specs);
+            targetsRemaining = specs.Count;
+            for (int i = 0; i < specs.Count; i++) CreateBlock(specs[i], i);
+        }
+
         CreatePistol();
     }
 
@@ -135,6 +304,43 @@ private void EnsureCamera()
         surface.size = new Vector2(TableColliderWidth, TableColliderHeight);
         surface.offset = new Vector2(0f, TableColliderOffsetY);
     }
+
+private void CreateModelTable(WarfestLevelCatalog.ModelTableSpec spec, int index)
+    {
+        const float surfaceThickness = 0.05f;
+
+        GameObject table = Instantiate(tableModelPrefab, worldRoot);
+        ApplyModelMaterial(table, tableModelMaterial);
+        table.name = "Level Table Model " + (index + 1).ToString("00");
+        table.transform.localPosition = Vector3.zero;
+        table.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+
+        // Measure after the X rotation so the support collider and box stack follow the real rendered tabletop.
+        Bounds sourceBounds = GetModelBounds(table);
+        float scale = spec.width / sourceBounds.size.x;
+        table.transform.localScale *= scale;
+
+        Bounds scaledBounds = GetModelBounds(table);
+        table.transform.position += new Vector3(
+            spec.x - scaledBounds.center.x,
+            spec.visibleTopY - scaledBounds.max.y,
+            spec.depth - scaledBounds.center.z);
+        Bounds tableBounds = GetModelBounds(table);
+        // The model's AABB top sits on a raised back lip, not the flat playable surface, so
+        // measure the true top by raycasting down onto the mesh. Crates rest on THIS height.
+        float modelTableTopY = MeasureTableSurfaceY(table, tableBounds);
+        modelTableTopYs.Add(modelTableTopY);
+
+        GameObject surface = new GameObject("Level Table Surface " + (index + 1).ToString("00"), typeof(BoxCollider2D));
+        surface.transform.SetParent(worldRoot, false);
+        surface.transform.position = new Vector3(tableBounds.center.x, modelTableTopY - surfaceThickness * 0.5f, 0.12f);
+        int tableLayer = LayerMask.NameToLayer("WarfestTable");
+        if (tableLayer >= 0) surface.layer = tableLayer;
+
+        BoxCollider2D collider = surface.GetComponent<BoxCollider2D>();
+        collider.size = new Vector2(tableBounds.size.x, surfaceThickness);
+    }
+
 
     private void CreateBlock(WarfestLevelCatalog.BlockSpec spec, int index)
     {
@@ -168,27 +374,151 @@ private void EnsureCamera()
         blocks.Add(block);
     }
 
+private void BuildModelLayout(int levelNumber)
+    {
+        List<WarfestLevelCatalog.ModelBlockSpec> specs = new List<WarfestLevelCatalog.ModelBlockSpec>();
+        WarfestLevelCatalog.FillModelLayout(levelNumber - 1, specs);
+        targetsRemaining = specs.Count;
+
+        for (int i = 0; i < specs.Count; i++)
+        {
+            CreateModelBox(specs[i], i);
+        }
+    }
+
+private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
+    {
+        GameObject prefab = GetBoxPrefab(spec.variant);
+        if (prefab == null) return;
+
+        const float tabletopGap = 0.004f;
+        const float visualOverlap = 0.012f;
+        const float colliderInset = 0.006f;
+
+        string layerName = spec.depthLayer == 0 ? "Front" : "Rear";
+        GameObject block = new GameObject(layerName + " Crate " + (index + 1).ToString("00"));
+        block.transform.SetParent(worldRoot, false);
+        float renderDepth = spec.depthLayer == 0 ? 0.08f : 0.72f;
+        block.transform.localPosition = new Vector3(spec.x, 0f, renderDepth);
+
+        GameObject visual = Instantiate(prefab);
+        visual.name = "Visual";
+        visual.transform.SetParent(block.transform, false);
+        visual.transform.localRotation = Quaternion.Euler(-90f, spec.variant == 4 ? 180f : 0f, 0f);
+        ApplyModelMaterial(visual, GetBoxMaterial(spec.variant));
+
+        Bounds sourceBounds = GetModelBounds(visual);
+        float widthScale = (spec.width + visualOverlap) / sourceBounds.size.x;
+        float heightScale = (spec.height + visualOverlap) / sourceBounds.size.y;
+        float depthScale = Mathf.Min(widthScale, heightScale);
+        visual.transform.localScale = Vector3.Scale(
+            visual.transform.localScale,
+            new Vector3(widthScale, heightScale, depthScale));
+
+        Bounds bounds = GetModelBounds(visual);
+        Vector3 blockPos = block.transform.position;
+        visual.transform.localPosition += new Vector3(
+            blockPos.x - bounds.center.x,
+            blockPos.y - bounds.center.y,
+            blockPos.z - bounds.center.z);
+
+        int tableIndex = Mathf.Clamp(spec.tableIndex, 0, Mathf.Max(0, modelTableTopYs.Count - 1));
+        float tableTopY = modelTableTopYs.Count > 0 ? modelTableTopYs[tableIndex] : -0.351f;
+        float desiredBottomY = tableTopY + tabletopGap + spec.yOffset;
+        block.transform.position = new Vector3(
+            blockPos.x,
+            desiredBottomY + spec.height * 0.5f,
+            blockPos.z);
+
+        BoxCollider2D gameplayCollider = block.AddComponent<BoxCollider2D>();
+        gameplayCollider.size = new Vector2(
+            Mathf.Max(0.05f, spec.width - colliderInset),
+            Mathf.Max(0.05f, spec.height - colliderInset));
+
+        // The two visual depth planes form independent physical stacks. Ignoring cross-layer
+        // contacts keeps the slightly offset rear design from pushing the front layer apart.
+        for (int i = 0; i < blocks.Count && i < blockDepthLayers.Count; i++)
+        {
+            if (blockDepthLayers[i] == spec.depthLayer) continue;
+            BoxCollider2D otherCollider = blocks[i] != null ? blocks[i].GetComponent<BoxCollider2D>() : null;
+            if (otherCollider != null) Physics2D.IgnoreCollision(gameplayCollider, otherCollider, true);
+        }
+
+        Rigidbody2D body = block.AddComponent<Rigidbody2D>();
+        body.bodyType = RigidbodyType2D.Kinematic;
+        body.mass = spec.width * spec.height * 1.45f;
+        body.gravityScale = 0f;
+        body.linearDamping = 0.16f;
+        body.angularDamping = 0.55f;
+        body.interpolation = RigidbodyInterpolation2D.Interpolate;
+        body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+
+        WarfestTarget target = block.AddComponent<WarfestTarget>();
+        target.Initialize(this);
+        blocks.Add(block);
+        blockDepthLayers.Add(spec.depthLayer);
+    }
+
+    private static Bounds GetModelBounds(GameObject model)
+    {
+        Renderer[] renderers = model.GetComponentsInChildren<Renderer>();
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
+        return bounds;
+    }
+
+    // Finds the flat playable top of the table by dropping a ray onto its mesh, so crates rest
+    // on the visible surface rather than the higher back-lip that dominates the model's AABB.
+    private static float MeasureTableSurfaceY(GameObject table, Bounds tableBounds)
+    {
+        MeshFilter meshFilter = table.GetComponentInChildren<MeshFilter>();
+        if (meshFilter == null) return tableBounds.max.y;
+
+        MeshCollider probe = meshFilter.gameObject.AddComponent<MeshCollider>();
+        Physics.SyncTransforms();
+        float surfaceY = tableBounds.max.y;
+        Ray ray = new Ray(new Vector3(tableBounds.center.x, tableBounds.max.y + 2f, tableBounds.center.z), Vector3.down);
+        if (probe.Raycast(ray, out RaycastHit hit, tableBounds.size.y + 4f))
+        {
+            surfaceY = hit.point.y;
+        }
+        DestroyImmediate(probe);
+        return surfaceY;
+    }
+
+
 private void CreatePistol()
     {
         if (pistolSprite == null) return;
+
         CreateCannonBase();
         pistolPivot = new GameObject("Pistol Pivot").transform;
         pistolPivot.SetParent(worldRoot, false);
-        pistolPivot.position = new Vector3(0f, -3.35f, -1f);
-        pistolVisual = CreateSprite("Pistol", pistolSprite, new Vector3(0f, 0.34f, 0f), new Vector2(0.165f, 0.165f), 5).transform;
+        pistolPivot.position = new Vector3(0f, -3.47f, -1f);
+
+        pistolVisual = CreateSprite(
+            "Pistol",
+            pistolSprite,
+            new Vector3(0f, 0.38f, 0f),
+            new Vector2(0.21f, 0.21f),
+            5).transform;
         pistolVisual.SetParent(pistolPivot, false);
         pistolRestLocalPosition = pistolVisual.localPosition;
+
         muzzle = new GameObject("Muzzle").transform;
         muzzle.SetParent(pistolPivot, false);
-        muzzle.localPosition = new Vector3(0f, 0.60f, 0f);
+        muzzle.localPosition = new Vector3(0f, 0.98f, 0f);
     }
 
 private void CreateCannonBase()
     {
-        CreateBasePad("Cannon Base Shadow", new Vector3(0f, -3.72f, 0f), new Vector2(2.95f, 0.58f), new Color(0.14f, 0.19f, 0.16f, 0.72f));
-        CreateBasePad("Cannon Base Outer Ring", new Vector3(0f, -3.64f, 0f), new Vector2(2.78f, 0.72f), new Color(0.43f, 0.31f, 0.15f, 1f));
-        CreateBasePad("Cannon Base Inner Ring", new Vector3(0f, -3.56f, 0f), new Vector2(2.34f, 0.56f), new Color(0.67f, 0.52f, 0.27f, 1f));
-        CreateBasePad("Cannon Base Hub", new Vector3(0f, -3.48f, 0f), new Vector2(1.40f, 0.38f), new Color(0.28f, 0.36f, 0.25f, 1f));
+        if (pistolBaseSprite == null) return;
+        CreateSprite(
+            "Pistol Base",
+            pistolBaseSprite,
+            new Vector3(0f, -3.82f, -0.25f),
+            new Vector2(0.22f, 0.22f),
+            4);
     }
 
     private void CreateBasePad(string name, Vector3 position, Vector2 scale, Color color)
@@ -221,24 +551,30 @@ private void CreateCannonBase()
         return cannonBaseSprite;
     }
 
-    private bool TryGetPointer(out Vector2 screenPosition, out bool pressed)
+private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool pressedThisFrame)
     {
         Touchscreen touchscreen = Touchscreen.current;
-        if (touchscreen != null && touchscreen.primaryTouch.press.isPressed)
+        if (touchscreen != null)
         {
             screenPosition = touchscreen.primaryTouch.position.ReadValue();
-            pressed = touchscreen.primaryTouch.press.wasPressedThisFrame;
+            held = touchscreen.primaryTouch.press.isPressed;
+            pressedThisFrame = touchscreen.primaryTouch.press.wasPressedThisFrame;
             return true;
         }
+
+        Mouse mouse = Mouse.current;
         Pointer pointer = Pointer.current;
-        if (pointer == null)
+        if (pointer == null || mouse == null)
         {
             screenPosition = default;
-            pressed = false;
+            held = false;
+            pressedThisFrame = false;
             return false;
         }
+
         screenPosition = pointer.position.ReadValue();
-        pressed = Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
+        held = mouse.leftButton.isPressed;
+        pressedThisFrame = mouse.leftButton.wasPressedThisFrame;
         return true;
     }
 
@@ -299,14 +635,16 @@ private void CreateCannonBase()
 public void RegisterTargetBroken(WarfestTarget target)
     {
         if (levelEnded) return;
+        ReleaseModelPhysics();
+
         targetsRemaining = Mathf.Max(0, targetsRemaining - 1);
-        if (targetText != null) targetText.text = "TARGETS\n" + targetsRemaining.ToString("00");
+        if (targetText != null) targetText.text = targetsRemaining.ToString("00");
         if (targetsRemaining == 0)
         {
             levelEnded = true;
             WarfestSession.CompleteLevel(level.number - 1);
         }
-        else
+        else if (level.number > WarfestLevelCatalog.AuthoredLevelCount)
         {
             Destroy(target.gameObject, 0.65f);
         }
@@ -331,37 +669,33 @@ private void BuildHud()
         RectTransform root = hudCanvas.transform as RectTransform;
         safeAreaRoot = CreateSafeAreaRoot(root);
 
-        CreateImage(safeAreaRoot, "HUD Panel", LightPanel, new Vector2(0.5f, 0.91f), new Vector2(0.96f, 0.18f));
-        Button menu = CreateButton(safeAreaRoot, "Menu", "MENU", Ink, new Vector2(0.10f, 0.92f), new Vector2(0.15f, 0.10f), 14);
-        menu.onClick.AddListener(WarfestSession.ReturnToMenu);
-        CreateText(safeAreaRoot, "Level Label", "LEVEL " + level.number.ToString("00"), 18, Ink, TextAnchor.MiddleLeft, new Vector2(0.32f, 0.945f), new Vector2(0.24f, 0.05f));
-        CreateText(safeAreaRoot, "Level Subtitle", level.title.ToUpperInvariant(), 14, new Color(0.30f, 0.40f, 0.50f), TextAnchor.MiddleLeft, new Vector2(0.32f, 0.885f), new Vector2(0.24f, 0.045f));
-        targetText = CreateText(safeAreaRoot, "Target Label", "TARGETS\n" + targetsRemaining.ToString("00"), 15, Ink, TextAnchor.MiddleCenter, new Vector2(0.64f, 0.925f), new Vector2(0.16f, 0.10f));
-        ballsText = CreateText(safeAreaRoot, "Balls Label", "BALLS\n" + remainingBalls.ToString("00"), 15, Ink, TextAnchor.MiddleCenter, new Vector2(0.84f, 0.945f), new Vector2(0.18f, 0.055f));
+        Color blue = new Color(0.10f, 0.43f, 0.76f, 1f);
+        Color orange = new Color(0.98f, 0.57f, 0.12f, 1f);
+        Color cream = new Color(1f, 0.98f, 0.91f, 0.97f);
 
-        RectTransform slotsRoot = CreateRect(safeAreaRoot, "Ball Slots", new Vector2(0.84f, 0.875f), new Vector2(0.18f, 0.035f));
-        HorizontalLayoutGroup layout = slotsRoot.gameObject.AddComponent<HorizontalLayoutGroup>();
-        layout.spacing = 4f;
-        layout.childForceExpandWidth = true;
-        layout.childForceExpandHeight = true;
-        int visibleSlotCount = Mathf.Min(ballCapacity, 10);
-        for (int i = 0; i < visibleSlotCount; i++)
-        {
-            GameObject slot = new GameObject("Ball " + (i + 1), typeof(RectTransform), typeof(Image));
-            slot.transform.SetParent(slotsRoot, false);
-            slot.GetComponent<Image>().color = Ink;
-            ballSlots.Add(slot.GetComponent<Image>());
-        }
+        CreateImage(safeAreaRoot, "Balls Card", cream, new Vector2(0.15f, 0.93f), new Vector2(0.25f, 0.13f));
+        CreateImage(safeAreaRoot, "Balls Header", blue, new Vector2(0.15f, 0.978f), new Vector2(0.22f, 0.035f));
+        CreateText(safeAreaRoot, "Balls Header Label", "BALLS", 13, Color.white, TextAnchor.MiddleCenter, new Vector2(0.15f, 0.978f), new Vector2(0.20f, 0.03f));
+        ballsText = CreateText(safeAreaRoot, "Balls Count", remainingBalls.ToString("00"), 30, Ink, TextAnchor.MiddleCenter, new Vector2(0.15f, 0.925f), new Vector2(0.20f, 0.075f));
+
+        CreateImage(safeAreaRoot, "Level Card", new Color(1f, 1f, 1f, 0.92f), new Vector2(0.51f, 0.93f), new Vector2(0.35f, 0.14f));
+        CreateText(safeAreaRoot, "Level Label", "LEVEL " + level.number.ToString("00"), 17, Ink, TextAnchor.MiddleLeft, new Vector2(0.45f, 0.962f), new Vector2(0.20f, 0.04f));
+        CreateText(safeAreaRoot, "Target Caption", "TARGETS", 11, blue, TextAnchor.MiddleLeft, new Vector2(0.43f, 0.915f), new Vector2(0.15f, 0.03f));
+        targetText = CreateText(safeAreaRoot, "Target Count", targetsRemaining.ToString("00"), 17, Ink, TextAnchor.MiddleCenter, new Vector2(0.56f, 0.915f), new Vector2(0.10f, 0.035f));
+        CreateText(safeAreaRoot, "Level Subtitle", level.title.ToUpperInvariant(), 11, Ink, TextAnchor.MiddleCenter, new Vector2(0.51f, 0.885f), new Vector2(0.32f, 0.03f));
+
+        Button menu = CreateButton(safeAreaRoot, "Menu", "MENU", orange, new Vector2(0.87f, 0.95f), new Vector2(0.17f, 0.075f), 14);
+        menu.onClick.AddListener(WarfestSession.ReturnToMenu);
 
         if (level.number != 1)
         {
-            CreateText(safeAreaRoot, "Instruction", "TAP A TARGET TO FIRE", 15, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.76f), new Vector2(0.58f, 0.05f));
+            CreateText(safeAreaRoot, "Instruction", "TAP A TARGET TO FIRE", 14, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.82f), new Vector2(0.58f, 0.045f));
         }
     }
 
 private void RefreshHud()
     {
-        if (ballsText != null) ballsText.text = "BALLS\n" + remainingBalls.ToString("00");
+        if (ballsText != null) ballsText.text = remainingBalls.ToString("00");
         for (int i = 0; i < ballSlots.Count; i++)
         {
             ballSlots[i].color = i < remainingBalls ? Ink : DisabledBall;
@@ -518,6 +852,44 @@ private static void ApplyRect(RectTransform rect, Transform parent, Vector2 cent
         rect.anchorMax = center + size * 0.5f;
         rect.offsetMin = Vector2.zero;
         rect.offsetMax = Vector2.zero;
+    }
+
+
+private void ReleaseModelPhysics()
+    {
+        if (modelPhysicsReleased || level.number > WarfestLevelCatalog.AuthoredLevelCount) return;
+        modelPhysicsReleased = true;
+
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            if (blocks[i] == null) continue;
+            Rigidbody2D body = blocks[i].GetComponent<Rigidbody2D>();
+            if (body == null) continue;
+            body.bodyType = RigidbodyType2D.Dynamic;
+            body.gravityScale = 1f;
+            body.WakeUp();
+        }
+    }
+
+
+private void CreateBackground()
+    {
+        if (backgroundSprite == null || gameplayCamera == null) return;
+
+        float worldHeight = gameplayCamera.orthographicSize * 2f;
+        float worldWidth = worldHeight * gameplayCamera.aspect;
+        Vector2 spriteSize = backgroundSprite.bounds.size;
+        float coverScale = Mathf.Max(
+            worldWidth / Mathf.Max(0.001f, spriteSize.x),
+            worldHeight / Mathf.Max(0.001f, spriteSize.y));
+
+        GameObject background = CreateSprite(
+            "Gameplay Background",
+            backgroundSprite,
+            new Vector3(gameplayCamera.transform.position.x, gameplayCamera.transform.position.y, 8f),
+            Vector2.one * coverScale,
+            -100);
+        background.GetComponent<SpriteRenderer>().color = Color.white;
     }
 }
 

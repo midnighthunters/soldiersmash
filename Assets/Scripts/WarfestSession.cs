@@ -6,16 +6,32 @@ public static class WarfestSession
     public const int LevelCount = 50;
     public const int DefaultBalls = 20;
     public const int LevelOneBalls = 60;
-    public static int SelectedLevel { get; private set; }
+    private const string SelectedLevelKey = "Warfest.SelectedLevel";
+    private static int selectedLevel = -1;
+
+    public static int SelectedLevel
+    {
+        get
+        {
+            if (selectedLevel < 0)
+            {
+                selectedLevel = Mathf.Clamp(PlayerPrefs.GetInt(SelectedLevelKey, 0), 0, LevelCount - 1);
+            }
+
+            return selectedLevel;
+        }
+    }
 
     public static int GetBallAllowance(int zeroBasedLevel)
     {
         return zeroBasedLevel < WarfestLevelCatalog.AuthoredLevelCount ? LevelOneBalls : DefaultBalls;
     }
 
-    public static void SelectLevel(int zeroBasedLevel)
+public static void SelectLevel(int zeroBasedLevel)
     {
-        SelectedLevel = Mathf.Clamp(zeroBasedLevel, 0, LevelCount - 1);
+        selectedLevel = Mathf.Clamp(zeroBasedLevel, 0, LevelCount - 1);
+        PlayerPrefs.SetInt(SelectedLevelKey, selectedLevel);
+        PlayerPrefs.Save();
     }
 
     public static void LoadLevel(int zeroBasedLevel)
@@ -24,9 +40,9 @@ public static class WarfestSession
         SceneManager.LoadScene("Game");
     }
 
-    public static void CompleteLevel(int zeroBasedLevel)
+public static void CompleteLevel(int zeroBasedLevel)
     {
-        SelectedLevel = Mathf.Clamp(zeroBasedLevel + 1, 0, LevelCount - 1);
+        SelectLevel(zeroBasedLevel + 1);
         SceneManager.LoadScene("MainMenu");
     }
 

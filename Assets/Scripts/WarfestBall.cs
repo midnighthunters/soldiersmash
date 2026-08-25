@@ -17,7 +17,7 @@ public sealed class WarfestBall : MonoBehaviour
         Destroy(gameObject, lifetime);
     }
 
-    private void OnCollisionEnter2D(Collision2D collision)
+private void OnCollisionEnter2D(Collision2D collision)
     {
         if (spent) return;
 
@@ -25,13 +25,19 @@ public sealed class WarfestBall : MonoBehaviour
         if (target == null) return;
 
         spent = true;
+        target.Break();
+
+        // Break releases an authored 3D structure from its perfectly aligned kinematic pose.
+        // Apply the impact after that release so the struck block receives the full impulse.
         Rigidbody2D targetBody = target.GetComponent<Rigidbody2D>();
         if (targetBody != null && collision.contactCount > 0)
         {
-            targetBody.AddForceAtPosition(launchDirection * impactImpulse, collision.GetContact(0).point, ForceMode2D.Impulse);
+            targetBody.AddForceAtPosition(
+                launchDirection * impactImpulse,
+                collision.GetContact(0).point,
+                ForceMode2D.Impulse);
         }
 
-        target.Break();
         Destroy(gameObject);
     }
 }

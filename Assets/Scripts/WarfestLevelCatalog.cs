@@ -23,6 +23,61 @@ public static class WarfestLevelCatalog
         }
     }
 
+    // Describes one physical 3D construction piece. The width and height are explicit so
+    // unlike models can share a precise modular grid without visual gaps or distorted spacing.
+    public struct ModelBlockSpec
+    {
+        public float x;
+        public float yOffset;
+        public int variant;     // 0 = box, 1 = box2, 2 = box3, 3 = long_box, 4 = soldier, 5 = cannister
+        public float width;
+        public float height;
+        public int depthLayer;  // 0 = front, 1 = rear
+        public int tableIndex;
+
+        public ModelBlockSpec(float x, float yOffset, int variant)
+            : this(x, yOffset, variant, variant == 2 ? 0.36f : 0.72f, variant == 3 ? 0.36f : 0.72f, 0, 0)
+        {
+        }
+
+        public ModelBlockSpec(float x, float yOffset, int variant, float width, float height)
+            : this(x, yOffset, variant, width, height, 0, 0)
+        {
+        }
+
+        public ModelBlockSpec(float x, float yOffset, int variant, float width, float height, int depthLayer, int tableIndex)
+        {
+            this.x = x;
+            this.yOffset = yOffset;
+            this.variant = variant;
+            this.width = width;
+            this.height = height;
+            this.depthLayer = depthLayer;
+            this.tableIndex = tableIndex;
+        }
+    }
+
+    public struct ModelTableSpec
+    {
+        public float x;
+        public float width;
+        public float visibleTopY;
+        public float depth;
+
+        public ModelTableSpec(float x, float width, float visibleTopY, float depth = 2f)
+        {
+            this.x = x;
+            this.width = width;
+            this.visibleTopY = visibleTopY;
+            this.depth = depth;
+        }
+    }
+
+    // Square pieces occupy a 0.72 world-unit cell. Tall and long pieces occupy a half-cell
+    // on their narrow axis, allowing every visible edge to meet on the same modular grid.
+    public const float ModelColPitch = 0.72f;
+    public const float ModelRowStep = 0.72f;
+
     public struct LevelDefinition
     {
         public int number;
@@ -136,7 +191,8 @@ public static class WarfestLevelCatalog
         },
     };
 
-    public const int AuthoredLevelCount = 5;
+    // The first ten campaign stages use carefully authored 3D constructions.
+    public const int AuthoredLevelCount = 10;
 
     private static readonly string[] Titles =
     {
@@ -194,6 +250,311 @@ public static class WarfestLevelCatalog
         }
 
         FillProcedural(zeroBasedLevel, blocks);
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Authored 3D layouts. Every piece snaps to the same 0.72-unit module. Rear-layer pieces
+    // are offset deliberately so their silhouettes remain visible behind the front structure.
+    // ------------------------------------------------------------------------------------------
+    public static void FillModelLayout(int zeroBasedLevel, List<ModelBlockSpec> blocks)
+    {
+        blocks.Clear();
+        switch (zeroBasedLevel)
+        {
+            case 0: BuildBrickWall(blocks); break;
+            case 1: BuildTwinTowers(blocks); break;
+            case 2: BuildZiggurat(blocks); break;
+            case 3: BuildFortress(blocks); break;
+            case 4: BuildStaircase(blocks); break;
+            case 5: BuildCrossfireBastion(blocks); break;
+            case 6: BuildSkylineRelay(blocks); break;
+            case 7: BuildHourglassKeep(blocks); break;
+            case 8: BuildTwinBarracks(blocks); break;
+            default: BuildFinalCitadel(blocks); break;
+        }
+    }
+
+    public static void FillModelTables(int zeroBasedLevel, List<ModelTableSpec> tables)
+    {
+        tables.Clear();
+        switch (zeroBasedLevel)
+        {
+            case 3: // split gate
+            case 8: // twin barracks
+                tables.Add(new ModelTableSpec(-1.28f, 2.25f, -0.42f, 2.10f));
+                tables.Add(new ModelTableSpec(1.28f, 2.25f, -0.42f, 2.05f));
+                break;
+            case 6: // staggered relay platforms
+                tables.Add(new ModelTableSpec(-1.30f, 2.20f, -0.62f, 2.10f));
+                tables.Add(new ModelTableSpec(1.25f, 2.20f, 0.05f, 2.05f));
+                break;
+            case 9: // final twin citadel
+                tables.Add(new ModelTableSpec(-1.32f, 2.30f, -0.48f, 2.10f));
+                tables.Add(new ModelTableSpec(1.32f, 2.30f, -0.48f, 2.05f));
+                break;
+            default:
+                tables.Add(new ModelTableSpec(0f, 4.8f, -0.351f));
+                break;
+        }
+    }
+
+    private static float ColX(float column) => column * ModelColPitch;
+    private static float RowY(int row) => row * ModelRowStep;
+
+    private static void AddModel(List<ModelBlockSpec> b, float x, float y, int variant,
+        float width = 0.72f, float height = 0.72f, int layer = 0, int table = 0)
+    {
+        b.Add(new ModelBlockSpec(x, y, variant, width, height, layer, table));
+    }
+
+    // Level 1: a solid brick wall, 5 crates wide and 3 tall, skins alternating per brick.
+private static void BuildBrickWall(List<ModelBlockSpec> b)
+    {
+        const float cell = 0.36f;
+        const float square = 0.72f;
+        const float half = 0.36f;
+
+        // Five-piece foundation: box and box2 alternate for a strong, colorful base.
+        for (int i = 0; i < 5; i++)
+        {
+            float x = (i - 2) * square;
+            b.Add(new ModelBlockSpec(x, 0f, i % 2, square, square));
+        }
+
+        // A continuous belt of long_box beams locks the foundation together.
+        for (int i = 0; i < 5; i++)
+        {
+            float x = (i - 2) * square;
+            b.Add(new ModelBlockSpec(x, square, 3, square, half));
+        }
+
+        // Solid middle storey: paired tall box3 pillars frame three square blocks.
+        float[] edgePillars = { -4.5f, -3.5f, 3.5f, 4.5f };
+        for (int i = 0; i < edgePillars.Length; i++)
+        {
+            b.Add(new ModelBlockSpec(edgePillars[i] * cell, square + half, 2, half, square));
+        }
+        b.Add(new ModelBlockSpec(-square, square + half, 1, square, square));
+        b.Add(new ModelBlockSpec(0f, square + half, 4, square, square));
+        b.Add(new ModelBlockSpec(square, square + half, 1, square, square));
+
+        // Second locking belt.
+        for (int i = 0; i < 5; i++)
+        {
+            float x = (i - 2) * square;
+            b.Add(new ModelBlockSpec(x, square * 2f + half, 3, square, half));
+        }
+
+        // Upper gate: close-set pillar pairs and two square shoulders leave one deliberate arch.
+        for (int i = 0; i < edgePillars.Length; i++)
+        {
+            b.Add(new ModelBlockSpec(edgePillars[i] * cell, square * 2f + half * 2f, 2, half, square));
+        }
+        b.Add(new ModelBlockSpec(-square, square * 2f + half * 2f, 0, square, square));
+        b.Add(new ModelBlockSpec(square, square * 2f + half * 2f, 1, square, square));
+
+        // Three overlapping-span cap beams bridge the gate and rest securely on both shoulders.
+        float capY = square * 3f + half * 2f;
+        b.Add(new ModelBlockSpec(-1.26f, capY, 3, 1.08f, half));
+        b.Add(new ModelBlockSpec(0f, capY, 3, 1.44f, half));
+        b.Add(new ModelBlockSpec(1.26f, capY, 3, 1.08f, half));
+    }
+
+    // Level 2: a symmetrical guardhouse with a visible rear watchtower.
+    private static void BuildTwinTowers(List<ModelBlockSpec> b)
+    {
+        // Rear watchtower: warm blocks peeking through the gate opening.
+        for (int row = 0; row < 3; row++) AddModel(b, 0.18f, RowY(row) + 0.18f, row == 1 ? 4 : 0, 0.72f, 0.72f, 1);
+        AddModel(b, -0.54f, RowY(3) + 0.18f, 3, 1.08f, 0.36f, 1);
+        AddModel(b, 0.72f, RowY(3) + 0.18f, 3, 1.08f, 0.36f, 1);
+
+        for (int row = 0; row < 4; row++)
+        {
+            AddModel(b, -1.44f, RowY(row), row % 2);
+            AddModel(b, 1.44f, RowY(row), (row + 1) % 2);
+        }
+        AddModel(b, -0.72f, 0f, 2, 0.36f, 0.72f);
+        AddModel(b, 0f, 0f, 4);
+        AddModel(b, 0.72f, 0f, 2, 0.36f, 0.72f);
+        AddModel(b, -0.90f, RowY(4), 3, 1.08f, 0.36f);
+        AddModel(b, 0f, RowY(4), 3, 0.72f, 0.36f);
+        AddModel(b, 0.90f, RowY(4), 3, 1.08f, 0.36f);
+    }
+
+    // Level 3: a colorful stepped ziggurat with a golden rear spine.
+    private static void BuildZiggurat(List<ModelBlockSpec> b)
+    {
+        for (int row = 0; row < 4; row++)
+            AddModel(b, 0.22f, RowY(row) + 0.18f, row == 2 ? 4 : 1, 0.72f, 0.72f, 1);
+        AddModel(b, -0.68f, RowY(4) + 0.18f, 3, 1.08f, 0.36f, 1);
+        AddModel(b, 0.58f, RowY(4) + 0.18f, 3, 1.08f, 0.36f, 1);
+
+        int[] widths = { 5, 4, 3, 2, 1 };
+        for (int row = 0; row < widths.Length; row++)
+        {
+            int w = widths[row];
+            float start = -(w - 1) * 0.5f;
+            for (int i = 0; i < w; i++)
+                AddModel(b, ColX(start + i), RowY(row), (row + i) % 3);
+        }
+        AddModel(b, 0f, RowY(5), 4);
+    }
+
+    // Level 4: two independent gate towers, each on its own table.
+    private static void BuildFortress(List<ModelBlockSpec> b)
+    {
+        for (int table = 0; table < 2; table++)
+        {
+            float center = table == 0 ? -1.28f : 1.28f;
+            int flip = table == 0 ? 0 : 1;
+            AddModel(b, center - 0.36f, 0f, flip, 0.72f, 0.72f, 0, table);
+            AddModel(b, center + 0.36f, 0f, 1 - flip, 0.72f, 0.72f, 0, table);
+            AddModel(b, center - 0.54f, RowY(1), 2, 0.36f, 0.72f, 0, table);
+            AddModel(b, center, RowY(1), 4, 0.72f, 0.72f, 0, table);
+            AddModel(b, center + 0.54f, RowY(1), 2, 0.36f, 0.72f, 0, table);
+            AddModel(b, center, RowY(2), 3, 1.44f, 0.36f, 0, table);
+            AddModel(b, center - 0.38f, 0.18f, 1, 0.72f, 0.72f, 1, table);
+            AddModel(b, center + 0.38f, RowY(1) + 0.18f, 0, 0.72f, 0.72f, 1, table);
+        }
+    }
+
+    // Level 5: interlocking front and rear staircases climbing in opposite directions.
+    private static void BuildStaircase(List<ModelBlockSpec> b)
+    {
+        int[] frontHeights = { 1, 2, 3, 4, 5 };
+        int[] rearHeights = { 5, 4, 3, 2, 1 };
+        for (int col = 0; col < frontHeights.Length; col++)
+        {
+            float x = ColX(col - 2);
+            for (int row = 0; row < rearHeights[col]; row++)
+                AddModel(b, x + 0.18f, RowY(row) + 0.18f, (row + col + 1) % 2, 0.72f, 0.72f, 1);
+            for (int row = 0; row < frontHeights[col]; row++)
+            {
+                bool useCannister = (col == 1 && row == 1) || (col == 3 && row == 1);
+                AddModel(b, x, RowY(row), useCannister ? 5 : (row + col) % 3,
+                    useCannister ? 0.56f : 0.72f, 0.72f);
+            }
+        }
+        AddModel(b, ColX(-1.5f), RowY(5), 3, 1.44f, 0.36f);
+        AddModel(b, ColX(2), RowY(5), 4);
+    }
+
+    // Level 6: broad armored bastion with a soldier corridor and rear cross-bracing.
+    private static void BuildCrossfireBastion(List<ModelBlockSpec> b)
+    {
+        for (int i = -2; i <= 2; i++)
+            AddModel(b, ColX(i), 0f, Mathf.Abs(i) == 1 ? 5 : Mathf.Abs(i) % 2,
+                Mathf.Abs(i) == 1 ? 0.56f : 0.72f, 0.72f);
+        AddModel(b, -1.44f, RowY(1), 2, 0.36f, 0.72f);
+        AddModel(b, -0.72f, RowY(1), 4);
+        AddModel(b, 0f, RowY(1), 3, 0.72f, 0.36f);
+        AddModel(b, 0.72f, RowY(1), 4);
+        AddModel(b, 1.44f, RowY(1), 2, 0.36f, 0.72f);
+        for (int i = -2; i <= 2; i++) AddModel(b, ColX(i), RowY(2), (i + 5) % 3);
+        AddModel(b, -1.08f, RowY(3), 3, 1.44f, 0.36f);
+        AddModel(b, 0f, RowY(3), 4);
+        AddModel(b, 1.08f, RowY(3), 3, 1.44f, 0.36f);
+
+        for (int i = -2; i <= 2; i += 2)
+        {
+            AddModel(b, ColX(i) + 0.18f, RowY(1) + 0.18f, 1, 0.72f, 0.72f, 1);
+            AddModel(b, ColX(i) + 0.18f, RowY(2) + 0.18f, i == 0 ? 4 : 0, 0.72f, 0.72f, 1);
+        }
+    }
+
+    // Level 7: two staggered relay platforms with distinct tower profiles.
+    private static void BuildSkylineRelay(List<ModelBlockSpec> b)
+    {
+        for (int row = 0; row < 4; row++)
+        {
+            AddModel(b, -1.62f, RowY(row), row == 1 ? 5 : row % 2,
+                row == 1 ? 0.56f : 0.72f, 0.72f, 0, 0);
+            if (row < 3) AddModel(b, -0.90f, RowY(row), row == 1 ? 4 : 2, row == 1 ? 0.72f : 0.36f, 0.72f, 0, 0);
+        }
+        AddModel(b, -1.26f, RowY(4), 3, 1.44f, 0.36f, 0, 0);
+
+        for (int row = 0; row < 3; row++)
+        {
+            AddModel(b, 0.90f, RowY(row), row == 1 ? 4 : 1, 0.72f, 0.72f, 0, 1);
+            AddModel(b, 1.62f, RowY(row), row == 1 ? 5 : row % 2,
+                row == 1 ? 0.56f : 0.72f, 0.72f, 0, 1);
+        }
+        AddModel(b, 1.26f, RowY(3), 3, 1.44f, 0.36f, 0, 1);
+
+        AddModel(b, -1.44f, 0.18f, 2, 0.36f, 0.72f, 1, 0);
+        AddModel(b, -0.72f, RowY(2) + 0.18f, 0, 0.72f, 0.72f, 1, 0);
+        AddModel(b, 1.44f, 0.18f, 2, 0.36f, 0.72f, 1, 1);
+        AddModel(b, 0.72f, RowY(2) + 0.18f, 1, 0.72f, 0.72f, 1, 1);
+    }
+
+    // Level 8: hourglass silhouette, pinched around a soldier core.
+    private static void BuildHourglassKeep(List<ModelBlockSpec> b)
+    {
+        int[] widths = { 5, 3, 1, 3, 5 };
+        for (int row = 0; row < widths.Length; row++)
+        {
+            int w = widths[row];
+            float start = -(w - 1) * 0.5f;
+            for (int i = 0; i < w; i++)
+            {
+                bool useCannister = row == 0 && (i == 1 || i == 3);
+                AddModel(b, ColX(start + i), RowY(row), useCannister ? 5 : (row == 2 ? 4 : (row + i) % 3),
+                    useCannister ? 0.56f : 0.72f, 0.72f);
+            }
+        }
+        AddModel(b, -1.26f, RowY(5), 3, 1.08f, 0.36f);
+        AddModel(b, 0f, RowY(5), 3, 1.44f, 0.36f);
+        AddModel(b, 1.26f, RowY(5), 3, 1.08f, 0.36f);
+        for (int row = 0; row < 4; row++)
+        {
+            AddModel(b, -1.26f, RowY(row) + 0.18f, row % 2, 0.72f, 0.72f, 1);
+            AddModel(b, 1.26f, RowY(row) + 0.18f, (row + 1) % 2, 0.72f, 0.72f, 1);
+        }
+    }
+
+    // Level 9: paired barracks with rear supply stacks and front soldiers.
+    private static void BuildTwinBarracks(List<ModelBlockSpec> b)
+    {
+        for (int table = 0; table < 2; table++)
+        {
+            float center = table == 0 ? -1.28f : 1.28f;
+            AddModel(b, center - 0.36f, 0f, 0, 0.72f, 0.72f, 0, table);
+            AddModel(b, center + 0.36f, 0f, 1, 0.72f, 0.72f, 0, table);
+            AddModel(b, center - 0.54f, RowY(1), 2, 0.36f, 0.72f, 0, table);
+            AddModel(b, center, RowY(1), 4, 0.72f, 0.72f, 0, table);
+            AddModel(b, center + 0.54f, RowY(1), 2, 0.36f, 0.72f, 0, table);
+            AddModel(b, center, RowY(2), 3, 1.44f, 0.36f, 0, table);
+            AddModel(b, center - 0.38f, 0.18f, 1, 0.72f, 0.72f, 1, table);
+            AddModel(b, center + 0.38f, 0.18f, 0, 0.72f, 0.72f, 1, table);
+            AddModel(b, center, RowY(1) + 0.18f, 5, 0.56f, 0.72f, 1, table);
+        }
+    }
+
+    // Level 10: final twin citadel with rear guard towers, soldiers, and long parapets.
+    private static void BuildFinalCitadel(List<ModelBlockSpec> b)
+    {
+        for (int table = 0; table < 2; table++)
+        {
+            float center = table == 0 ? -1.32f : 1.32f;
+            for (int row = 0; row < 4; row++)
+            {
+                bool leftCannister = row == 1 && table == 0;
+                bool rightCannister = row == 1 && table == 1;
+                AddModel(b, center - 0.36f, RowY(row), leftCannister ? 5 : (row + table) % 2,
+                    leftCannister ? 0.56f : 0.72f, 0.72f, 0, table);
+                AddModel(b, center + 0.36f, RowY(row), rightCannister ? 5 : (row + table + 1) % 2,
+                    rightCannister ? 0.56f : 0.72f, 0.72f, 0, table);
+            }
+            AddModel(b, center - 0.54f, RowY(4), 2, 0.36f, 0.72f, 0, table);
+            AddModel(b, center, RowY(4), 4, 0.72f, 0.72f, 0, table);
+            AddModel(b, center + 0.54f, RowY(4), 2, 0.36f, 0.72f, 0, table);
+            AddModel(b, center, RowY(5), 3, 1.44f, 0.36f, 0, table);
+
+            AddModel(b, center, 0.18f, 4, 0.72f, 0.72f, 1, table);
+            AddModel(b, center - 0.38f, RowY(1) + 0.18f, 0, 0.72f, 0.72f, 1, table);
+            AddModel(b, center + 0.38f, RowY(2) + 0.18f, 1, 0.72f, 0.72f, 1, table);
+            AddModel(b, center, RowY(3) + 0.18f, 4, 0.72f, 0.72f, 1, table);
+        }
     }
 
     // ------------------------------------------------------------------------------------------
@@ -296,7 +657,7 @@ public static class WarfestLevelCatalog
     }
 
     // ------------------------------------------------------------------------------------------
-    // Procedural fallback for levels 6+ (keeps the original 50-level campaign functional)
+    // Procedural fallback for levels 11+ (keeps the original 50-level campaign functional)
     // ------------------------------------------------------------------------------------------
     private static void FillProcedural(int zeroBasedLevel, List<BlockSpec> blocks)
     {
