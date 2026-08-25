@@ -38,6 +38,13 @@ public sealed class WarfestGameController : MonoBehaviour
     private CanvasScaler hudScaler;
     private Vector2 appliedReferenceResolution;
     private Rect appliedSafeArea;
+
+    private const float TableColliderWidth = 16.10f;
+    private const float TableColliderHeight = 0.52f;
+    private const float TableColliderOffsetY = 1.64f;
+    private const float ShotRadius = 0.16f;
+    private const float ShotSpeed = 17f;
+    private const float ShotLifetime = 4f;
     private float recoilTime;
 
 private void Start()
@@ -96,9 +103,9 @@ private void EnsureCamera()
             cameraObject.tag = "MainCamera";
             gameplayCamera = cameraObject.GetComponent<Camera>();
         }
-        gameplayCamera.transform.position = new Vector3(0f, 1.8f, -10f);
+        gameplayCamera.transform.position = new Vector3(0f, 1.85f, -10f);
         gameplayCamera.orthographic = true;
-        gameplayCamera.orthographicSize = 6.25f;
+        gameplayCamera.orthographicSize = 6.35f;
         gameplayCamera.clearFlags = CameraClearFlags.SolidColor;
         gameplayCamera.backgroundColor = LightBackground;
     }
@@ -114,32 +121,46 @@ private void EnsureCamera()
         CreatePistol();
     }
 
-private void CreateTable()
+    private void CreateTable()
     {
         if (tableSprite == null) return;
-        CreateSprite("Table", tableSprite, new Vector3(0f, -0.30f, 0f), new Vector2(0.38f, 0.38f), 0);
-        GameObject surface = new GameObject("Table Surface", typeof(BoxCollider2D));
-        surface.transform.SetParent(worldRoot, false);
-        surface.transform.localPosition = new Vector3(0f, 0.70f, 0f);
-        surface.GetComponent<BoxCollider2D>().size = new Vector2(8.65f, 0.18f);
+
+        GameObject table = CreateSprite("Table", tableSprite, new Vector3(0f, -0.95f, 0f), new Vector2(0.315f, 0.315f), 0);
+        int tableLayer = LayerMask.NameToLayer("WarfestTable");
+        if (tableLayer >= 0) table.layer = tableLayer;
+
+        BoxCollider2D surface = table.AddComponent<BoxCollider2D>();
+        // The sprite contains transparent space above the physical tabletop. This offset
+        // aligns the collision top with the visible metal surface rather than the image bounds.
+        surface.size = new Vector2(TableColliderWidth, TableColliderHeight);
+        surface.offset = new Vector2(0f, TableColliderOffsetY);
     }
 
-private void CreateBlock(WarfestLevelCatalog.BlockSpec spec, int index)
+    private void CreateBlock(WarfestLevelCatalog.BlockSpec spec, int index)
     {
         if (blockSprites == null || blockSprites.Length == 0) return;
         int spriteIndex = spec.spriteIndex >= 0 ? spec.spriteIndex % blockSprites.Length : index % blockSprites.Length;
         Sprite sprite = blockSprites[spriteIndex];
-        GameObject block = CreateSprite("Target " + (index + 1).ToString("00"), sprite, new Vector3(spec.position.x, spec.position.y, 0f), spec.scale * 0.26f, 2);
+
+        Vector2 spriteSize = sprite.bounds.size;
+        Vector2 localScale = new Vector2(
+            spriteSize.x > 0.0001f ? spec.size.x / spriteSize.x : 1f,
+            spriteSize.y > 0.0001f ? spec.size.y / spriteSize.y : 1f);
+
+        GameObject block = CreateSprite("Target " + (index + 1).ToString("00"), sprite, new Vector3(spec.position.x, spec.position.y, 0f), localScale, 2);
         block.transform.rotation = Quaternion.Euler(0f, 0f, spec.rotation);
         block.GetComponent<SpriteRenderer>().color = spec.color;
 
         BoxCollider2D collider = block.AddComponent<BoxCollider2D>();
-        collider.size = new Vector2(2.5f, 2.5f);
+        collider.size = spriteSize;
         Rigidbody2D body = block.AddComponent<Rigidbody2D>();
-        bool isLevelOneFortress = level.number == 1;
-        body.bodyType = isLevelOneFortress ? RigidbodyType2D.Kinematic : RigidbodyType2D.Dynamic;
+        body.bodyType = RigidbodyType2D.Dynamic;
         body.mass = 0.7f;
-        body.gravityScale = isLevelOneFortress ? 0f : 1f;
+        body.gravityScale = 1f;
+        body.linearDamping = 0.12f;
+
+        body.constraints = RigidbodyConstraints2D.FreezePositionX | RigidbodyConstraints2D.FreezeRotation;
+        body.angularDamping = 0.4f;
         body.interpolation = RigidbodyInterpolation2D.Interpolate;
         body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         WarfestTarget target = block.AddComponent<WarfestTarget>();
@@ -153,21 +174,21 @@ private void CreatePistol()
         CreateCannonBase();
         pistolPivot = new GameObject("Pistol Pivot").transform;
         pistolPivot.SetParent(worldRoot, false);
-        pistolPivot.position = new Vector3(0f, -3.65f, -1f);
-        pistolVisual = CreateSprite("Pistol", pistolSprite, new Vector3(0f, 0.40f, 0f), new Vector2(0.20f, 0.20f), 5).transform;
+        pistolPivot.position = new Vector3(0f, -3.35f, -1f);
+        pistolVisual = CreateSprite("Pistol", pistolSprite, new Vector3(0f, 0.34f, 0f), new Vector2(0.165f, 0.165f), 5).transform;
         pistolVisual.SetParent(pistolPivot, false);
         pistolRestLocalPosition = pistolVisual.localPosition;
         muzzle = new GameObject("Muzzle").transform;
         muzzle.SetParent(pistolPivot, false);
-        muzzle.localPosition = new Vector3(0f, 0.72f, 0f);
+        muzzle.localPosition = new Vector3(0f, 0.60f, 0f);
     }
 
 private void CreateCannonBase()
     {
-        CreateBasePad("Cannon Base Shadow", new Vector3(0f, -4.00f, 0f), new Vector2(4.55f, 0.84f), new Color(0.14f, 0.19f, 0.16f, 0.72f));
-        CreateBasePad("Cannon Base Outer Ring", new Vector3(0f, -3.93f, 0f), new Vector2(4.28f, 1.06f), new Color(0.43f, 0.31f, 0.15f, 1f));
-        CreateBasePad("Cannon Base Inner Ring", new Vector3(0f, -3.83f, 0f), new Vector2(3.62f, 0.82f), new Color(0.67f, 0.52f, 0.27f, 1f));
-        CreateBasePad("Cannon Base Hub", new Vector3(0f, -3.73f, 0f), new Vector2(2.18f, 0.54f), new Color(0.28f, 0.36f, 0.25f, 1f));
+        CreateBasePad("Cannon Base Shadow", new Vector3(0f, -3.72f, 0f), new Vector2(2.95f, 0.58f), new Color(0.14f, 0.19f, 0.16f, 0.72f));
+        CreateBasePad("Cannon Base Outer Ring", new Vector3(0f, -3.64f, 0f), new Vector2(2.78f, 0.72f), new Color(0.43f, 0.31f, 0.15f, 1f));
+        CreateBasePad("Cannon Base Inner Ring", new Vector3(0f, -3.56f, 0f), new Vector2(2.34f, 0.56f), new Color(0.67f, 0.52f, 0.27f, 1f));
+        CreateBasePad("Cannon Base Hub", new Vector3(0f, -3.48f, 0f), new Vector2(1.40f, 0.38f), new Color(0.28f, 0.36f, 0.25f, 1f));
     }
 
     private void CreateBasePad(string name, Vector3 position, Vector2 scale, Color color)
@@ -233,20 +254,40 @@ private void CreateCannonBase()
     private void Fire()
     {
         if (remainingBalls <= 0 || levelEnded) return;
+
         remainingBalls--;
         recoilTime = 0.11f;
         RefreshHud();
-        RaycastHit2D[] hits = Physics2D.RaycastAll(muzzle.position, muzzle.up, 40f);
-        foreach (RaycastHit2D hit in hits)
-        {
-            WarfestTarget target = hit.collider != null ? hit.collider.GetComponent<WarfestTarget>() : null;
-            if (target == null) continue;
-            Rigidbody2D body = target.GetComponent<Rigidbody2D>();
-            body.AddForceAtPosition(muzzle.up * (5.5f + level.difficulty * 0.4f), hit.point, ForceMode2D.Impulse);
-            target.Break();
-            break;
-        }
+        CreateBall(muzzle.position, muzzle.up);
+
         if (remainingBalls <= 0 && targetsRemaining > 0) StartCoroutine(ShowFailureAfterDelay());
+    }
+
+    private void CreateBall(Vector2 position, Vector2 direction)
+    {
+        GameObject ball = new GameObject("Shot Ball", typeof(SpriteRenderer), typeof(CircleCollider2D), typeof(Rigidbody2D), typeof(WarfestBall));
+
+        int shotLayer = LayerMask.NameToLayer("WarfestShot");
+        if (shotLayer >= 0) ball.layer = shotLayer;
+        ball.transform.SetParent(worldRoot, false);
+        ball.transform.position = position;
+        ball.transform.localScale = Vector3.one * ShotRadius;
+
+        SpriteRenderer renderer = ball.GetComponent<SpriteRenderer>();
+        renderer.sprite = GetCannonBaseSprite();
+        renderer.color = new Color(1f, 0.82f, 0.22f, 1f);
+        renderer.sortingOrder = 6;
+
+        CircleCollider2D collider = ball.GetComponent<CircleCollider2D>();
+        collider.radius = 0.5f;
+        Rigidbody2D body = ball.GetComponent<Rigidbody2D>();
+        body.bodyType = RigidbodyType2D.Dynamic;
+        body.mass = 0.22f;
+        body.gravityScale = 0.35f;
+        body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        body.interpolation = RigidbodyInterpolation2D.Interpolate;
+        body.linearVelocity = direction.normalized * ShotSpeed;
+        ball.GetComponent<WarfestBall>().Initialize(direction, 5.8f + level.difficulty * 0.5f, ShotLifetime);
     }
 
     private IEnumerator ShowFailureAfterDelay()

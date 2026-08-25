@@ -10,7 +10,7 @@ public static class WarfestSession
 
     public static int GetBallAllowance(int zeroBasedLevel)
     {
-        return zeroBasedLevel == 0 ? LevelOneBalls : DefaultBalls;
+        return zeroBasedLevel < WarfestLevelCatalog.AuthoredLevelCount ? LevelOneBalls : DefaultBalls;
     }
 
     public static void SelectLevel(int zeroBasedLevel)

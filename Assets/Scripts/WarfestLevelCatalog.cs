@@ -6,18 +6,20 @@ public static class WarfestLevelCatalog
     public struct BlockSpec
     {
         public Vector2 position;
-        public Vector2 scale;
+        public Vector2 size;      // desired world-space footprint (sprite is fitted into this box)
         public float rotation;
         public Color color;
         public int spriteIndex;
+        public bool kinematic;
 
-        public BlockSpec(Vector2 position, Vector2 scale, float rotation, Color color, int spriteIndex = -1)
+        public BlockSpec(Vector2 position, Vector2 size, float rotation, Color color, int spriteIndex, bool kinematic)
         {
             this.position = position;
-            this.scale = scale;
+            this.size = size;
             this.rotation = rotation;
             this.color = color;
             this.spriteIndex = spriteIndex;
+            this.kinematic = kinematic;
         }
     }
 
@@ -34,6 +36,107 @@ public static class WarfestLevelCatalog
         public int blockCount;
         public int difficulty;
     }
+
+    // ---- Block sprite indices inside Resources/blocks -------------------------------------------
+    private const int SMALL_ORANGE = 0; // small orange crate w/ diagonal plank
+    private const int WIDE_ORANGE = 1;  // wide banded orange crate
+    private const int ORANGE_X = 2;     // tall orange crate w/ X brace
+    private const int STONE = 3;        // 2x2 cream stone cube cluster
+    private const int BEAM = 4;         // horizontal orange beam on metal legs
+    private const int SANDBAG = 5;      // sandbag pile
+    private const int PILLAR = 6;       // narrow tall grey stone pillar
+    private const int CANNON = 7;       // grey block with round cannon hole
+    private const int METAL = 8;        // grey riveted metal plate crate
+    private const int GREEN = 9;        // green wood crate
+
+    // Grid geometry ------------------------------------------------------------------------------
+    private const float ColPitch = 0.44f;      // fits every authored base row on the table collider
+    private const float Cell = 0.42f;          // normal block footprint
+    private const float BeamHeight = 0.16f;    // shallow support shelf footprint
+    private const float TallHeight = 0.82f;    // X crates and pillars occupy a dedicated tall row
+    private const float BlockGap = 0.025f;     // prevents colliders spawning interpenetrated
+    private const float TableTopY = -0.351f;   // matches the visible tabletop in the table sprite
+
+    private static readonly Color White = Color.white;
+
+    // Each level is authored as ASCII art (top row first). Legend:
+    //   .  empty            S stone cluster      C cannon-hole block   M metal crate
+    //   G  green crate      o small orange crate D sandbag pile        X orange X crate (tall)
+    //   I  stone pillar (tall)   B orange beam (runs of B merge into one wide shelf)
+    private static readonly string[][] LevelGrids =
+    {
+        // ---------------------------------------------------------------- Level 1 (sample 1)
+        new[]
+        {
+            "....BBB....",
+            "....I.I....",
+            "...BBBBB...",
+            "....IGI....",
+            "...BBBBB...",
+            "...X.D.X...",
+            "..BBBBBBB..",
+            ".DD.MoM.DD.",
+            ".BBBGGGBBB.",
+            "..S.MoM.S..",
+            "SSSS.C.SSSS",
+        },
+        // ---------------------------------------------------------------- Level 2 (sample 2)
+        new[]
+        {
+            "....BBB....",
+            "....I.I....",
+            "....XGX....",
+            "...BBBBB...",
+            "..XM.D.MX..",
+            "..BBBBBBB..",
+            ".GX.MDM.XG.",
+            ".GBBBBBBBG.",
+            ".SGXMDMXGS.",
+            "SSCSGGGSCSS",
+        },
+        // ---------------------------------------------------------------- Level 3 (sample 3)
+        new[]
+        {
+            "....BBB....",
+            "....I.I....",
+            "..G.DDD.G..",
+            "..BBBBBBB..",
+            "..X.SSS.X..",
+            "..BBBBBBB..",
+            ".GD.MMM.DG.",
+            ".GBBBBBBBG.",
+            ".SD.M.M.DS.",
+            ".C.SSXSS.C.",
+        },
+        // ---------------------------------------------------------------- Level 4 (sample 4)
+        new[]
+        {
+            "....BBB....",
+            "...o.X.o...",
+            "...BBBBB...",
+            "..SSMCMSS..",
+            "..BBBBBBB..",
+            ".X.MDDDM.X.",
+            ".BBBBBBBBB.",
+            "...GGGGG...",
+            "..SDGGGDS..",
+            "SSCSSXSSCSS",
+        },
+        // ---------------------------------------------------------------- Level 5 (sample 5, asymmetric)
+        new[]
+        {
+            "...X.......",
+            "...S..BBBB.",
+            ".o.SS.G..S.",
+            ".BBBB.MSS..",
+            ".DDX..G.SS.",
+            ".DD.GCG.o..",
+            "SSSBBBBBGSS",
+            "SS..ooo..SS",
+        },
+    };
+
+    public const int AuthoredLevelCount = 5;
 
     private static readonly string[] Titles =
     {
@@ -62,15 +165,6 @@ public static class WarfestLevelCatalog
         new Color(0.35f, 0.92f, 0.96f)
     };
 
-    private static readonly Color[] LevelOneFortressColors =
-    {
-        new Color(1.00f, 0.64f, 0.16f),
-        new Color(0.16f, 0.48f, 0.92f),
-        new Color(0.36f, 0.70f, 0.18f),
-        new Color(0.88f, 0.28f, 0.14f),
-        new Color(0.72f, 0.74f, 0.70f)
-    };
-
     public static LevelDefinition Get(int zeroBasedLevel)
     {
         int index = Mathf.Clamp(zeroBasedLevel, 0, WarfestSession.LevelCount - 1);
@@ -85,7 +179,7 @@ public static class WarfestLevelCatalog
             accent = Accents[theme],
             secondary = Color.Lerp(Accents[theme], Color.white, 0.25f),
             designType = index % 10,
-            blockCount = index == 0 ? 56 : Mathf.Clamp(7 + index / 3, 7, 19),
+            blockCount = Mathf.Clamp(7 + index / 3, 7, 19),
             difficulty = 1 + index / 8
         };
     }
@@ -93,12 +187,119 @@ public static class WarfestLevelCatalog
     public static void FillLayout(int zeroBasedLevel, List<BlockSpec> blocks)
     {
         blocks.Clear();
-        if (zeroBasedLevel == 0)
+        if (zeroBasedLevel >= 0 && zeroBasedLevel < LevelGrids.Length)
         {
-            FillLevelOneFortress(blocks);
+            BuildFromGrid(LevelGrids[zeroBasedLevel], blocks);
             return;
         }
 
+        FillProcedural(zeroBasedLevel, blocks);
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // ASCII grid -> block specifications
+    // ------------------------------------------------------------------------------------------
+    private static void BuildFromGrid(string[] grid, List<BlockSpec> blocks)
+    {
+        int rows = grid.Length;
+        int cols = 0;
+        for (int r = 0; r < rows; r++) cols = Mathf.Max(cols, grid[r].Length);
+
+        float centerCol = (cols - 1) * 0.5f;
+        float[] rowBottomY = new float[rows];
+        float nextRowBottom = TableTopY + BlockGap;
+        for (int fb = 0; fb < rows; fb++)
+        {
+            int r = rows - 1 - fb;
+            rowBottomY[r] = nextRowBottom;
+            nextRowBottom += GetRowHeight(grid[r]) + BlockGap;
+        }
+
+        for (int r = 0; r < rows; r++)
+        {
+            string line = grid[r];
+            float rowBottom = rowBottomY[r];
+            for (int c = 0; c < line.Length; c++)
+            {
+                char token = line[c];
+                if (token == '.' || token == ' ') continue;
+
+                float colX = (c - centerCol) * ColPitch;
+                if (token == 'B')
+                {
+                    int start = c;
+                    while (c + 1 < line.Length && line[c + 1] == 'B') c++;
+                    int runLength = c - start + 1;
+                    float beamCenterX = ((start + c) * 0.5f - centerCol) * ColPitch;
+                    float beamWidth = runLength * ColPitch - BlockGap;
+                    blocks.Add(new BlockSpec(
+                        new Vector2(beamCenterX, rowBottom + BeamHeight * 0.5f),
+                        new Vector2(beamWidth, BeamHeight),
+                        0f, White, BEAM, false));
+                    continue;
+                }
+
+                AddToken(blocks, token, colX, rowBottom);
+            }
+        }
+    }
+
+    private static float GetRowHeight(string line)
+    {
+        bool hasTall = false;
+        bool hasNonBeam = false;
+        bool hasBeam = false;
+        foreach (char token in line)
+        {
+            hasTall |= token == 'X' || token == 'I';
+            hasNonBeam |= token != '.' && token != ' ' && token != 'B';
+            hasBeam |= token == 'B';
+        }
+
+        if (hasTall) return TallHeight;
+        return hasBeam && !hasNonBeam ? BeamHeight : Cell;
+    }
+
+    private static void AddToken(List<BlockSpec> blocks, char token, float x, float rowBottom)
+    {
+        float normalCenterY = rowBottom + Cell * 0.5f;
+        switch (token)
+        {
+            case 'S':
+                blocks.Add(new BlockSpec(new Vector2(x, normalCenterY), new Vector2(Cell, Cell), 0f, White, STONE, false));
+                break;
+            case 'C':
+                blocks.Add(new BlockSpec(new Vector2(x, normalCenterY), new Vector2(Cell, Cell), 0f, White, CANNON, false));
+                break;
+            case 'M':
+                blocks.Add(new BlockSpec(new Vector2(x, normalCenterY), new Vector2(Cell, Cell), 0f, White, METAL, false));
+                break;
+            case 'G':
+                blocks.Add(new BlockSpec(new Vector2(x, normalCenterY), new Vector2(Cell, Cell), 0f, White, GREEN, false));
+                break;
+            case 'o':
+                blocks.Add(new BlockSpec(new Vector2(x, normalCenterY), new Vector2(Cell * 0.92f, Cell * 0.92f), 0f, White, SMALL_ORANGE, false));
+                break;
+            case 'D':
+                blocks.Add(new BlockSpec(new Vector2(x, normalCenterY), new Vector2(Cell, Cell), 0f, White, SANDBAG, false));
+                break;
+            case 'X':
+                blocks.Add(new BlockSpec(new Vector2(x, rowBottom + TallHeight * 0.5f), new Vector2(Cell * 0.72f, TallHeight), 0f, White, ORANGE_X, false));
+                break;
+            case 'I':
+                blocks.Add(new BlockSpec(new Vector2(x, rowBottom + TallHeight * 0.5f), new Vector2(Cell * 0.62f, TallHeight), 0f, White, PILLAR, false));
+                break;
+            case 'W':
+                blocks.Add(new BlockSpec(new Vector2(x, normalCenterY), new Vector2(Cell * 1.5f, Cell), 0f, White, WIDE_ORANGE, false));
+                break;
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Procedural fallback for levels 6+ (keeps the original 50-level campaign functional)
+    // ------------------------------------------------------------------------------------------
+    private static void FillProcedural(int zeroBasedLevel, List<BlockSpec> blocks)
+    {
         LevelDefinition level = Get(zeroBasedLevel);
         int count = level.blockCount;
         float phase = zeroBasedLevel * 0.47f;
@@ -120,9 +321,9 @@ public static class WarfestLevelCatalog
                     rotation = (i % 2 == 0 ? -1f : 1f) * 5f;
                     break;
                 case 2:
-                    int row = i / 6;
-                    int column = i % 6;
-                    position = new Vector2((column - 2.5f) * 1.2f + row * 0.18f, 1.0f + row * 0.58f);
+                    int rowIndex = i / 6;
+                    int columnIndex = i % 6;
+                    position = new Vector2((columnIndex - 2.5f) * 1.2f + rowIndex * 0.18f, 1.0f + rowIndex * 0.58f);
                     break;
                 case 3:
                     float angle = i / (float)count * Mathf.PI * 2f + phase;
@@ -158,41 +359,9 @@ public static class WarfestLevelCatalog
                     break;
             }
 
-            Color blockColor = Color.Lerp(level.accent, level.secondary, (i % 4) / 3f);
-            blocks.Add(new BlockSpec(position, scale, rotation, blockColor));
+            Vector2 worldSize = new Vector2(Mathf.Max(0.42f, scale.x * 0.85f), Mathf.Max(0.42f, scale.y * 0.95f));
+            int spriteIndex = i % 10;
+            blocks.Add(new BlockSpec(position, worldSize, rotation, White, spriteIndex, false));
         }
-    }
-
-private static void FillLevelOneFortress(List<BlockSpec> blocks)
-    {
-        Vector2 blockScale = new Vector2(0.70f, 0.68f);
-        for (int row = 0; row < 9; row++)
-        {
-            for (int column = 0; column < 6; column++)
-            {
-                float x = (column - 2.5f) * 0.54f;
-                float y = 1.48f + row * 0.48f;
-                AddFortressBlock(blocks, x, y, blockScale, GetFortressSpriteIndex(row, column));
-            }
-        }
-
-        AddFortressBlock(blocks, -1.35f, 5.55f, blockScale, 3);
-        AddFortressBlock(blocks, 1.35f, 5.55f, blockScale, 3);
-    }
-
-private static void AddFortressBlock(List<BlockSpec> blocks, float x, float y, Vector2 scale, int spriteIndex)
-    {
-        int colorIndex = Mathf.Abs(Mathf.RoundToInt(x * 10f) + Mathf.RoundToInt(y * 10f)) % LevelOneFortressColors.Length;
-        blocks.Add(new BlockSpec(new Vector2(x, y), scale, 0f, LevelOneFortressColors[colorIndex], spriteIndex));
-    }
-
-    private static int GetFortressSpriteIndex(int row, int column)
-    {
-        if (column == 0 || column == 5) return row >= 7 ? 3 : 2;
-        if (row == 8) return 1;
-        if (row == 0) return column == 2 || column == 3 ? 4 : 0;
-        if (row == 4 && (column == 1 || column == 4)) return 4;
-        if (column == 2 || column == 3) return row >= 3 && row <= 6 ? 5 : 0;
-        return (row + column) % 3 == 0 ? 3 : 0;
     }
 }
