@@ -148,6 +148,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1a4165dcecb4da541be7cfd0800b0b44, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WarfestMainMenu
+  headingFont: {fileID: 12800000, guid: 5c4e40d72a68ae647923449abd788f55, type: 3}
+  bodyFont: {fileID: 12800000, guid: 59bece0deaf955b4585c5a431f4466d3, type: 3}
 --- !u!4 &1051528080
 Transform:
   m_ObjectHideFlags: 0

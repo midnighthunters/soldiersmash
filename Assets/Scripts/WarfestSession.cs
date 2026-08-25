@@ -24,7 +24,9 @@ public static class WarfestSession
 
     public static int GetBallAllowance(int zeroBasedLevel)
     {
-        return zeroBasedLevel < WarfestLevelCatalog.AuthoredLevelCount ? LevelOneBalls : DefaultBalls;
+        // The campaign starts generously and tightens every two levels. Later bomb-heavy
+        // structures remain solvable because one precise shot can clear several targets.
+        return Mathf.Clamp(52 - zeroBasedLevel / 2, 28, 52);
     }
 
 public static void SelectLevel(int zeroBasedLevel)

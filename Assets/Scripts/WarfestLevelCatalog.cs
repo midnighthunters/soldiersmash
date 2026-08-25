@@ -29,7 +29,7 @@ public static class WarfestLevelCatalog
     {
         public float x;
         public float yOffset;
-        public int variant;     // 0 = box, 1 = box2, 2 = box3, 3 = long_box, 4 = soldier, 5 = cannister
+        public int variant;     // 0 = box, 1 = box2, 2 = box3, 3 = long_box, 4 = soldier, 5 = cannister, 6 = bomb
         public float width;
         public float height;
         public int depthLayer;  // 0 = front, 1 = rear
@@ -191,8 +191,8 @@ public static class WarfestLevelCatalog
         },
     };
 
-    // The first ten campaign stages use carefully authored 3D constructions.
-    public const int AuthoredLevelCount = 10;
+    // The complete campaign uses deterministic, authored 3D construction rules.
+    public const int AuthoredLevelCount = 50;
 
     private static readonly string[] Titles =
     {
@@ -259,24 +259,50 @@ public static class WarfestLevelCatalog
     public static void FillModelLayout(int zeroBasedLevel, List<ModelBlockSpec> blocks)
     {
         blocks.Clear();
-        switch (zeroBasedLevel)
+        if (zeroBasedLevel < 10)
         {
-            case 0: BuildBrickWall(blocks); break;
-            case 1: BuildTwinTowers(blocks); break;
-            case 2: BuildZiggurat(blocks); break;
-            case 3: BuildFortress(blocks); break;
-            case 4: BuildStaircase(blocks); break;
-            case 5: BuildCrossfireBastion(blocks); break;
-            case 6: BuildSkylineRelay(blocks); break;
-            case 7: BuildHourglassKeep(blocks); break;
-            case 8: BuildTwinBarracks(blocks); break;
-            default: BuildFinalCitadel(blocks); break;
+            switch (zeroBasedLevel)
+            {
+                case 0: BuildBrickWall(blocks); break;
+                case 1: BuildTwinTowers(blocks); break;
+                case 2: BuildZiggurat(blocks); break;
+                case 3: BuildFortress(blocks); break;
+                case 4: BuildStaircase(blocks); break;
+                case 5: BuildCrossfireBastion(blocks); break;
+                case 6: BuildSkylineRelay(blocks); break;
+                case 7: BuildHourglassKeep(blocks); break;
+                case 8: BuildTwinBarracks(blocks); break;
+                default: BuildFinalCitadel(blocks); break;
+            }
         }
+        else BuildCampaignLevel(zeroBasedLevel, blocks);
+
+        InjectBombs(zeroBasedLevel, blocks);
     }
 
     public static void FillModelTables(int zeroBasedLevel, List<ModelTableSpec> tables)
     {
         tables.Clear();
+        if (zeroBasedLevel >= 10 && UsesTwinTables(zeroBasedLevel))
+        {
+            int motif = zeroBasedLevel % 10;
+            int tier = Mathf.Clamp(zeroBasedLevel / 10, 1, 4);
+            float tierTop = -0.46f - Mathf.Max(0, tier - 2) * 0.26f;
+            float leftTop = motif == 6 ? tierTop - 0.22f : tierTop;
+            float rightTop = motif == 6 ? tierTop + 0.22f : tierTop;
+            tables.Add(new ModelTableSpec(-1.30f, 2.24f, leftTop, 2.10f));
+            tables.Add(new ModelTableSpec(1.30f, 2.24f, rightTop, 2.05f));
+            return;
+        }
+
+        if (zeroBasedLevel >= 10)
+        {
+            int tier = Mathf.Clamp(zeroBasedLevel / 10, 1, 4);
+            float tierTop = -0.351f - Mathf.Max(0, tier - 2) * 0.26f;
+            tables.Add(new ModelTableSpec(0f, 4.8f, tierTop));
+            return;
+        }
+
         switch (zeroBasedLevel)
         {
             case 3: // split gate
@@ -296,6 +322,12 @@ public static class WarfestLevelCatalog
                 tables.Add(new ModelTableSpec(0f, 4.8f, -0.351f));
                 break;
         }
+    }
+
+    private static bool UsesTwinTables(int zeroBasedLevel)
+    {
+        int motif = zeroBasedLevel % 10;
+        return motif == 3 || motif == 6 || motif == 8 || motif == 9;
     }
 
     private static float ColX(float column) => column * ModelColPitch;
@@ -554,6 +586,247 @@ private static void BuildBrickWall(List<ModelBlockSpec> b)
             AddModel(b, center - 0.38f, RowY(1) + 0.18f, 0, 0.72f, 0.72f, 1, table);
             AddModel(b, center + 0.38f, RowY(2) + 0.18f, 1, 0.72f, 0.72f, 1, table);
             AddModel(b, center, RowY(3) + 0.18f, 4, 0.72f, 0.72f, 1, table);
+        }
+    }
+
+    // Levels 11-50: ten architectural families repeated across five increasingly elaborate
+    // tiers. Every level is deterministic, symmetric, modular, and receives its own material
+    // cadence so consecutive structures never have the same visual rhythm.
+    private static void BuildCampaignLevel(int zeroBasedLevel, List<ModelBlockSpec> b)
+    {
+        int tier = Mathf.Clamp(zeroBasedLevel / 10, 1, 4);
+        int motif = zeroBasedLevel % 10;
+        int rows = 4 + tier;
+
+        if (UsesTwinTables(zeroBasedLevel))
+        {
+            BuildCampaignTwin(b, zeroBasedLevel, tier, rows, motif);
+            return;
+        }
+
+        switch (motif)
+        {
+            case 0: BuildCampaignCrown(b, zeroBasedLevel, tier, rows); break;
+            case 1: BuildCampaignArch(b, zeroBasedLevel, tier, rows); break;
+            case 2: BuildCampaignPyramid(b, zeroBasedLevel, tier, rows); break;
+            case 4: BuildCampaignDiamond(b, zeroBasedLevel, tier, rows); break;
+            case 5: BuildCampaignBastion(b, zeroBasedLevel, tier, rows); break;
+            default: BuildCampaignHourglass(b, zeroBasedLevel, tier, rows); break;
+        }
+    }
+
+    private static int CampaignVariant(int level, int row, int column)
+    {
+        int value = Mathf.Abs(level + row * 2 + column * 3) % 6;
+        if (value == 4) return 0;
+        return value == 5 ? 1 : value;
+    }
+
+    private static void AddCampaignBlock(List<ModelBlockSpec> b, int level, float x, int row,
+        int column, int layer = 0, int table = 0)
+    {
+        int variant = CampaignVariant(level, row, column);
+        float width = variant == 2 ? 0.36f : (variant == 5 ? 0.56f : 0.72f);
+        AddModel(b, x, RowY(row) + (layer == 1 ? 0.18f : 0f), variant, width, 0.72f, layer, table);
+    }
+
+    private static void AddFoundation(List<ModelBlockSpec> b, int level, int width, int table = 0, float center = 0f)
+    {
+        float start = -(width - 1) * 0.5f;
+        for (int i = 0; i < width; i++)
+            AddCampaignBlock(b, level, center + ColX(start + i), 0, i, 0, table);
+    }
+
+    private static void AddRearFrame(List<ModelBlockSpec> b, int level, int tier, int rows)
+    {
+        int rearRows = Mathf.Min(rows - 1, 2 + tier);
+        for (int row = 0; row < rearRows; row++)
+        {
+            float spread = 1.12f - row * 0.08f;
+            AddCampaignBlock(b, level + 3, -spread, row, -row, 1);
+            AddCampaignBlock(b, level + 3, spread, row, row, 1);
+        }
+        AddModel(b, 0.18f, RowY(rearRows) + 0.18f, 4, 0.72f, 0.72f, 1);
+    }
+
+    private static void BuildCampaignCrown(List<ModelBlockSpec> b, int level, int tier, int rows)
+    {
+        AddFoundation(b, level, 5);
+        for (int row = 1; row < rows; row++)
+        {
+            AddCampaignBlock(b, level, -1.44f, row, -2);
+            AddCampaignBlock(b, level, 1.44f, row, 2);
+            if (row < rows - 1 || tier >= 3)
+            {
+                AddCampaignBlock(b, level, -0.72f, row, -1);
+                AddCampaignBlock(b, level, 0.72f, row, 1);
+            }
+            if ((row + level) % 2 == 0) AddCampaignBlock(b, level, 0f, row, 0);
+        }
+        AddModel(b, -1.08f, RowY(rows), 3, 1.44f, 0.36f);
+        AddModel(b, 0f, RowY(rows), 4);
+        AddModel(b, 1.08f, RowY(rows), 3, 1.44f, 0.36f);
+        AddRearFrame(b, level, tier, rows);
+    }
+
+    private static void BuildCampaignArch(List<ModelBlockSpec> b, int level, int tier, int rows)
+    {
+        AddFoundation(b, level, 5);
+        for (int row = 1; row < rows; row++)
+        {
+            AddCampaignBlock(b, level, -1.44f, row, -2);
+            AddCampaignBlock(b, level, 1.44f, row, 2);
+            AddCampaignBlock(b, level, -0.72f, row, -1);
+            AddCampaignBlock(b, level, 0.72f, row, 1);
+            if (row <= tier) AddModel(b, 0f, RowY(row), row % 2 == 0 ? 4 : 5, row % 2 == 0 ? 0.72f : 0.56f, 0.72f);
+        }
+        AddModel(b, -0.90f, RowY(rows), 3, 1.08f, 0.36f);
+        AddModel(b, 0f, RowY(rows), 3, 0.72f, 0.36f);
+        AddModel(b, 0.90f, RowY(rows), 3, 1.08f, 0.36f);
+        AddRearFrame(b, level + 1, tier, rows);
+    }
+
+    private static void BuildCampaignPyramid(List<ModelBlockSpec> b, int level, int tier, int rows)
+    {
+        for (int row = 0; row < rows; row++)
+        {
+            int width = Mathf.Max(1, 5 - (row * 4 / Mathf.Max(1, rows - 1)));
+            if (width % 2 == 0) width++;
+            float start = -(width - 1) * 0.5f;
+            for (int i = 0; i < width; i++) AddCampaignBlock(b, level, ColX(start + i), row, i);
+            if (tier >= 3 && row < 2)
+            {
+                AddCampaignBlock(b, level + 2, -1.80f, row, -3);
+                AddCampaignBlock(b, level + 2, 1.80f, row, 3);
+            }
+        }
+        AddModel(b, 0f, RowY(rows), 4);
+        AddRearFrame(b, level + 2, tier, rows);
+    }
+
+    private static void BuildCampaignDiamond(List<ModelBlockSpec> b, int level, int tier, int rows)
+    {
+        int middle = rows / 2;
+        for (int row = 0; row < rows; row++)
+        {
+            int distance = Mathf.Abs(row - middle);
+            int width = distance >= middle ? 3 : (distance == middle - 1 ? 5 : 3);
+            if (row == 0) width = 5;
+            float start = -(width - 1) * 0.5f;
+            for (int i = 0; i < width; i++) AddCampaignBlock(b, level, ColX(start + i), row, i);
+        }
+        AddModel(b, -0.72f, RowY(rows), 3, 1.08f, 0.36f);
+        AddModel(b, 0.72f, RowY(rows), 3, 1.08f, 0.36f);
+        AddRearFrame(b, level + 4, tier, rows);
+    }
+
+    private static void BuildCampaignBastion(List<ModelBlockSpec> b, int level, int tier, int rows)
+    {
+        AddFoundation(b, level, 5);
+        for (int i = -2; i <= 2; i++) AddCampaignBlock(b, level + 1, ColX(i), 1, i);
+        for (int row = 2; row < rows; row++)
+        {
+            AddCampaignBlock(b, level, -1.44f, row, -2);
+            AddCampaignBlock(b, level, 1.44f, row, 2);
+            if (row % 2 == 0)
+            {
+                AddModel(b, -0.72f, RowY(row), 4);
+                AddModel(b, 0.72f, RowY(row), 4);
+            }
+            else AddCampaignBlock(b, level, 0f, row, 0);
+        }
+        AddModel(b, -1.08f, RowY(rows), 3, 1.44f, 0.36f);
+        AddModel(b, 0f, RowY(rows), 3, 0.72f, 0.36f);
+        AddModel(b, 1.08f, RowY(rows), 3, 1.44f, 0.36f);
+        AddRearFrame(b, level + 5, tier, rows);
+    }
+
+    private static void BuildCampaignHourglass(List<ModelBlockSpec> b, int level, int tier, int rows)
+    {
+        for (int row = 0; row < rows; row++)
+        {
+            float normalized = rows <= 1 ? 0f : row / (float)(rows - 1);
+            int width = Mathf.Abs(normalized - 0.5f) > 0.28f ? 5 : (Mathf.Abs(normalized - 0.5f) > 0.10f ? 3 : 1);
+            float start = -(width - 1) * 0.5f;
+            for (int i = 0; i < width; i++) AddCampaignBlock(b, level, ColX(start + i), row, i);
+        }
+        AddModel(b, 0f, RowY(rows), 4);
+        AddRearFrame(b, level + 6, tier, rows);
+    }
+
+    private static void BuildCampaignTwin(List<ModelBlockSpec> b, int level, int tier, int rows, int motif)
+    {
+        for (int table = 0; table < 2; table++)
+        {
+            float center = table == 0 ? -1.30f : 1.30f;
+            int tierHeightReduction = tier >= 4 ? 1 : 0;
+            int towerRows = rows - tierHeightReduction;
+            if (motif == 6 && table == 1) towerRows = Mathf.Max(3, towerRows - 1);
+            AddFoundation(b, level, 2, table, center);
+            for (int row = 1; row < towerRows; row++)
+            {
+                AddCampaignBlock(b, level, center - 0.36f, row, -1, 0, table);
+                AddCampaignBlock(b, level, center + 0.36f, row, 1, 0, table);
+            }
+            AddModel(b, center, RowY(towerRows), 3, 1.44f, 0.36f, 0, table);
+            AddModel(b, center, RowY(towerRows) + 0.36f, 4, 0.72f, 0.72f, 0, table);
+
+            int rearRows = Mathf.Min(towerRows - 1, 2 + tier);
+            for (int row = 0; row < rearRows; row++)
+            {
+                float rearX = center + (table == 0 ? 0.20f : -0.20f);
+                AddCampaignBlock(b, level + 5, rearX, row, row, 1, table);
+            }
+            if (tier >= 3) AddModel(b, center, RowY(rearRows) + 0.18f, 4, 0.72f, 0.72f, 1, table);
+        }
+    }
+
+    private static void InjectBombs(int zeroBasedLevel, List<ModelBlockSpec> b)
+    {
+        if (b.Count == 0) return;
+        int bombCount = Mathf.Clamp(1 + zeroBasedLevel / 13, 1, 4);
+        float maxY = 0f;
+        for (int i = 0; i < b.Count; i++) maxY = Mathf.Max(maxY, b[i].yOffset);
+
+        float[] targetX;
+        float[] targetHeight;
+        switch (bombCount)
+        {
+            case 1:
+                targetX = new[] { 0f }; targetHeight = new[] { 0.42f }; break;
+            case 2:
+                targetX = new[] { -0.78f, 0.78f }; targetHeight = new[] { 0.38f, 0.38f }; break;
+            case 3:
+                targetX = new[] { -1.08f, 0f, 1.08f }; targetHeight = new[] { 0.32f, 0.58f, 0.32f }; break;
+            default:
+                targetX = new[] { -1.12f, -0.38f, 0.38f, 1.12f }; targetHeight = new[] { 0.30f, 0.60f, 0.60f, 0.30f }; break;
+        }
+
+        HashSet<int> used = new HashSet<int>();
+        for (int bomb = 0; bomb < bombCount; bomb++)
+        {
+            int bestIndex = -1;
+            float bestScore = float.MaxValue;
+            float desiredY = maxY * targetHeight[bomb];
+            for (int i = 0; i < b.Count; i++)
+            {
+                if (used.Contains(i)) continue;
+                ModelBlockSpec candidate = b[i];
+                if (candidate.variant == 3 || candidate.variant == 4 || candidate.variant == 6 || candidate.width < 0.5f) continue;
+                float score = Mathf.Abs(candidate.x - targetX[bomb]) + Mathf.Abs(candidate.yOffset - desiredY) * 0.75f;
+                if (candidate.depthLayer > 0) score += 0.35f;
+                if (score >= bestScore) continue;
+                bestScore = score;
+                bestIndex = i;
+            }
+
+            if (bestIndex < 0) continue;
+            ModelBlockSpec selected = b[bestIndex];
+            selected.variant = 6;
+            selected.width = 0.56f;
+            selected.height = 0.72f;
+            b[bestIndex] = selected;
+            used.Add(bestIndex);
         }
     }
 
