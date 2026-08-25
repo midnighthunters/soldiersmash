@@ -1,0 +1,21 @@
+# Unity-generated project data
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]serSettings/
+
+# Local build output and captures
+/[Bb]uild/
+/[Bb]uilds/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Local IDE and editor data
+/.vs/
+/.idea/
+/*.csproj
+/*.sln
+/*.suo
+/*.user
+/*.userprefs
