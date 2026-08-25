@@ -6,8 +6,22 @@ public static class WarfestSession
     public const int LevelCount = 50;
     public const int DefaultBalls = 20;
     public const int LevelOneBalls = 60;
+    public const int MaxLives = 5;
     private const string SelectedLevelKey = "Warfest.SelectedLevel";
+    private const string LivesKey = "Warfest.Lives";
     private static int selectedLevel = -1;
+
+    // Current number of lives the player holds. Defaults to a full bar and is clamped so the
+    // UI can safely show "5" and switch its label to "FULL" when the player is topped up.
+    public static int Lives
+    {
+        get { return Mathf.Clamp(PlayerPrefs.GetInt(LivesKey, MaxLives), 0, MaxLives); }
+    }
+
+    public static bool LivesFull
+    {
+        get { return Lives >= MaxLives; }
+    }
 
     public static int SelectedLevel
     {

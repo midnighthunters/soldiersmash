@@ -91,20 +91,16 @@ public sealed class WarfestMainMenu : MonoBehaviour
         CreateOutlinedText(safeAreaRoot, "Campaign Value", (level.number * 125).ToString(), 24, Navy,
             TextAnchor.MiddleCenter, new Vector2(0.425f, 0.92f), new Vector2(0.17f, 0.046f), bodyFont, Color.white, 1.4f);
 
-        CreateSheetImage(safeAreaRoot, "Energy Bar", new Rect(775f, 43f, 276f, 119f),
+        int lives = WarfestSession.Lives;
+        CreateSheetImage(safeAreaRoot, "Lives Bar", new Rect(775f, 43f, 276f, 119f),
             new Vector2(0.715f, 0.92f), new Vector2(0.27f, 0.071f));
-        CreateOutlinedText(safeAreaRoot, "Ball Count", balls.ToString(), 25, Cream,
+        CreateOutlinedText(safeAreaRoot, "Life Count", lives.ToString(), 25, Cream,
             TextAnchor.MiddleCenter, new Vector2(0.665f, 0.922f), new Vector2(0.07f, 0.046f), headingFont, Navy, 1.5f);
-        CreateText(safeAreaRoot, "Ready Status", "READY", 18, DeepGreen, TextAnchor.MiddleCenter,
-            new Vector2(0.775f, 0.92f), new Vector2(0.10f, 0.04f), bodyFont);
+        CreateText(safeAreaRoot, "Life Status", WarfestSession.LivesFull ? "FULL" : "READY", 18, DeepGreen,
+            TextAnchor.MiddleCenter, new Vector2(0.79f, 0.92f), new Vector2(0.13f, 0.04f), bodyFont);
 
         CreateSheetImage(safeAreaRoot, "Settings", new Rect(1144f, 46f, 100f, 108f),
             new Vector2(0.925f, 0.92f), new Vector2(0.09f, 0.062f));
-
-        CreateOutlinedText(safeAreaRoot, "Game Title", "WARFEST", 42, Cream, TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 0.80f), new Vector2(0.68f, 0.075f), headingFont, DeepGreen, 2.4f);
-        CreateOutlinedText(safeAreaRoot, "Location", "BANGALORE COMMAND", 17, Gold, TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 0.755f), new Vector2(0.6f, 0.036f), bodyFont, DeepGreen, 1.2f);
     }
 
     private void BuildWorldDecorations()
@@ -116,6 +112,11 @@ public sealed class WarfestMainMenu : MonoBehaviour
         Image tent = CreateSheetImage(safeAreaRoot, "Command Tent", new Rect(376f, 203f, 423f, 342f),
             new Vector2(0.81f, 0.51f), new Vector2(0.44f, 0.27f));
         tent.color = new Color(1f, 1f, 1f, 0.88f);
+
+        CreateSheetImage(safeAreaRoot, "No Ads Badge", new Rect(1063f, 282f, 174f, 200f),
+            new Vector2(0.88f, 0.66f), new Vector2(0.17f, 0.12f));
+        CreateOutlinedText(safeAreaRoot, "No Ads Label", "NO ADS", 12, Gold, TextAnchor.MiddleCenter,
+            new Vector2(0.88f, 0.627f), new Vector2(0.15f, 0.026f), bodyFont, DeepGreen, 0.8f);
     }
 
     private void BuildMissionCard(WarfestLevelCatalog.LevelDefinition level, int balls)
@@ -133,27 +134,42 @@ public sealed class WarfestMainMenu : MonoBehaviour
         progress.fillAmount = Mathf.Clamp01((float)level.number / WarfestSession.LevelCount);
         CreateOutlinedText(card, "Campaign Progress", level.number + "/" + WarfestSession.LevelCount, 21, Cream,
             TextAnchor.MiddleCenter, new Vector2(0.49f, 0.91f), new Vector2(0.25f, 0.09f), bodyFont, Navy, 1.4f);
-        CreateSheetImage(card, "Reward Chest", new Rect(1065f, 751f, 128f, 115f),
-            new Vector2(0.86f, 0.91f), new Vector2(0.18f, 0.23f));
+        CreateSheetImage(card, "Reward Chest", new Rect(1065f, 775f, 132f, 107f),
+            new Vector2(0.86f, 0.905f), new Vector2(0.19f, 0.24f));
 
         Button deploy = CreateSheetButton(card, "Deploy Mission", new Rect(443f, 560f, 410f, 174f),
-            new Vector2(0.5f, 0.52f), new Vector2(0.91f, 0.54f));
+            new Vector2(0.5f, 0.535f), new Vector2(0.84f, 0.5f));
         deploy.onClick.AddListener(() => WarfestSession.LoadLevel(WarfestSession.SelectedLevel));
 
+        // Difficulty rides on its own recessed chip across the top of the green plate; the
+        // level number then reads large and centered underneath it, matching the reference.
         string difficulty = level.difficulty <= 2 ? "EASY" : level.difficulty <= 4 ? "HARD" : "ELITE";
-        CreateText(deploy.transform, "Difficulty", difficulty, 17, Gold, TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 0.82f), new Vector2(0.5f, 0.18f), bodyFont);
-        CreateOutlinedText(deploy.transform, "Level Number", "LEVEL " + level.number.ToString("00"), 43, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.53f), new Vector2(0.86f, 0.32f), headingFont, DeepGreen, 2f);
-        CreateText(deploy.transform, "Mission Name", level.title.ToUpperInvariant(), 18, Cream, TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 0.25f), new Vector2(0.84f, 0.18f), bodyFont);
+        Image difficultyChip = CreateSheetImage(deploy.transform, "Difficulty Chip", new Rect(868f, 712f, 185f, 58f),
+            new Vector2(0.5f, 0.865f), new Vector2(0.62f, 0.24f));
+        difficultyChip.color = new Color(0.56f, 0.61f, 0.5f, 1f);
+        CreateOutlinedText(deploy.transform, "Difficulty", difficulty, 18, new Color(0.87f, 0.93f, 0.79f, 1f),
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.865f), new Vector2(0.5f, 0.16f), bodyFont, DeepGreen, 1.2f);
+        CreateOutlinedText(deploy.transform, "Level Number", "LEVEL " + level.number.ToString("00"), 48, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.4f), new Vector2(0.9f, 0.46f), headingFont, DeepGreen, 2.3f);
 
-        CreateSheetImage(card, "Rounds", new Rect(24f, 837f, 120f, 125f),
-            new Vector2(0.16f, 0.105f), new Vector2(0.18f, 0.25f));
-        CreateOutlinedText(card, "Rounds Count", balls + " SHOTS", 19, Navy, TextAnchor.MiddleCenter,
-            new Vector2(0.43f, 0.105f), new Vector2(0.34f, 0.13f), bodyFont, Color.white, 1.1f);
+        // Bottom reward strip: shells overlap the left cap of a centered star-progress bar,
+        // with a star medal and its bonus payout overlapping the right cap.
+        CreateSheetImage(card, "Reward Track", new Rect(458f, 763f, 365f, 82f),
+            new Vector2(0.5f, 0.095f), new Vector2(0.64f, 0.13f));
+        Image rewardFill = CreateSheetImage(card, "Reward Fill", new Rect(216f, 866f, 550f, 60f),
+            new Vector2(0.5f, 0.095f), new Vector2(0.58f, 0.058f));
+        rewardFill.type = Image.Type.Filled;
+        rewardFill.fillMethod = Image.FillMethod.Horizontal;
+        rewardFill.fillOrigin = 0;
+        rewardFill.fillAmount = 1f;
+        CreateOutlinedText(card, "Reward Count", "3/3", 19, Navy, TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 0.095f), new Vector2(0.4f, 0.1f), bodyFont, Color.white, 1.1f);
+        CreateSheetImage(card, "Shells", new Rect(24f, 837f, 120f, 125f),
+            new Vector2(0.14f, 0.11f), new Vector2(0.16f, 0.24f));
         CreateSheetImage(card, "Star Medal", new Rect(814f, 830f, 256f, 140f),
-            new Vector2(0.84f, 0.11f), new Vector2(0.22f, 0.27f));
+            new Vector2(0.87f, 0.12f), new Vector2(0.2f, 0.26f));
+        CreateOutlinedText(card, "Star Bonus", "+2", 15, Cream, TextAnchor.MiddleCenter,
+            new Vector2(0.93f, 0.045f), new Vector2(0.12f, 0.08f), bodyFont, Navy, 1f);
     }
 
     private void BuildBottomNavigation()
@@ -163,22 +179,18 @@ public sealed class WarfestMainMenu : MonoBehaviour
         CreateSheetImage(nav, "Left Tile", new Rect(5f, 963f, 210f, 178f),
             new Vector2(0.17f, 0.46f), new Vector2(0.33f, 0.92f));
         CreateSheetImage(nav, "Armory", new Rect(237f, 960f, 205f, 181f),
-            new Vector2(0.17f, 0.52f), new Vector2(0.22f, 0.72f));
-        CreateOutlinedText(nav, "Armory Label", "ARMORY", 13, Cream, TextAnchor.MiddleCenter,
-            new Vector2(0.17f, 0.15f), new Vector2(0.25f, 0.18f), bodyFont, DeepGreen, 1f);
+            new Vector2(0.17f, 0.5f), new Vector2(0.22f, 0.72f));
 
-        Button home = CreateSheetButton(nav, "Home Deploy", new Rect(442f, 930f, 370f, 224f),
+        Button home = CreateSheetButton(nav, "Home Tab", new Rect(442f, 930f, 370f, 224f),
             new Vector2(0.5f, 0.53f), new Vector2(0.42f, 1.05f));
-        home.onClick.AddListener(() => WarfestSession.LoadLevel(WarfestSession.SelectedLevel));
-        CreateOutlinedText(home.transform, "Deploy Label", "DEPLOY", 19, Cream, TextAnchor.MiddleCenter,
+        home.onClick.AddListener(WarfestSession.ReturnToMenu);
+        CreateOutlinedText(home.transform, "Home Label", "HOME", 19, Cream, TextAnchor.MiddleCenter,
             new Vector2(0.5f, 0.16f), new Vector2(0.7f, 0.18f), bodyFont, DeepGreen, 1.4f);
 
         CreateSheetImage(nav, "Right Tile", new Rect(1038f, 963f, 211f, 178f),
             new Vector2(0.83f, 0.46f), new Vector2(0.33f, 0.92f));
         CreateSheetImage(nav, "Trophy", new Rect(824f, 962f, 204f, 185f),
-            new Vector2(0.83f, 0.52f), new Vector2(0.22f, 0.72f));
-        CreateOutlinedText(nav, "Ranks Label", "RANKS", 13, Cream, TextAnchor.MiddleCenter,
-            new Vector2(0.83f, 0.15f), new Vector2(0.25f, 0.18f), bodyFont, DeepGreen, 1f);
+            new Vector2(0.83f, 0.5f), new Vector2(0.22f, 0.72f));
     }
 
     private Canvas CreateCanvas(string name)
