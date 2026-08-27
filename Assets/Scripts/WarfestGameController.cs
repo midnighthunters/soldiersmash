@@ -11,10 +11,8 @@ public sealed class WarfestGameController : MonoBehaviour
     private static readonly Color LightBackground = new Color(0.93f, 0.96f, 0.98f, 1f);
     private static readonly Color Ink = new Color(0.08f, 0.14f, 0.22f, 1f);
     private static readonly Color LightPanel = new Color(1f, 1f, 1f, 0.95f);
-    private static readonly Color DisabledBall = new Color(0.70f, 0.76f, 0.82f, 1f);
 
     private readonly List<GameObject> blocks = new List<GameObject>();
-    private readonly List<Image> ballSlots = new List<Image>();
     [SerializeField] private Font headingFont;
     [SerializeField] private Font bodyFont;
     private Font font;
@@ -35,6 +33,7 @@ public sealed class WarfestGameController : MonoBehaviour
     private Sprite blueLabelSprite;
     private Sprite settingsPanelSprite;
     private Sprite explosionSprite;
+    private Material explosionParticleMaterial;
     private Sprite tableSprite;
     private Sprite cannonBaseSprite;
     private GameObject[] boxModelPrefabs;
@@ -612,6 +611,10 @@ private static float GetModelYRotation(int variant)
     private static Bounds GetModelBounds(GameObject model)
     {
         Renderer[] renderers = model.GetComponentsInChildren<Renderer>();
+        if (renderers == null || renderers.Length == 0)
+        {
+            return new Bounds(model.transform.position, Vector3.zero);
+        }
         Bounds bounds = renderers[0].bounds;
         for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
         return bounds;
@@ -828,8 +831,39 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
 
     private IEnumerator ShowFailureAfterDelay()
     {
+        // The final shot may still be travelling, and the structure it strikes may still be
+        // toppling. Blocks only count as cleared once they fall off the table, so wait for the
+        // world to come to rest before judging the level - otherwise a winning last shot can be
+        // called a loss while the pieces are still mid-fall. A timeout guards against jitter.
         yield return new WaitForSeconds(0.7f);
+
+        float guard = 0f;
+        while (!levelEnded && targetsRemaining > 0 && !WorldHasSettled() && guard < 6f)
+        {
+            guard += 0.15f;
+            yield return new WaitForSeconds(0.15f);
+        }
+
         if (!levelEnded && targetsRemaining > 0) ShowFailure();
+    }
+
+    // True once no shot is still in flight and every remaining block has effectively stopped
+    // moving, meaning nothing else can clear a target this attempt.
+    private bool WorldHasSettled()
+    {
+        if (Object.FindObjectsByType<WarfestBall>(FindObjectsInactive.Exclude).Length > 0) return false;
+
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            if (blocks[i] == null) continue;
+            Rigidbody2D body = blocks[i].GetComponent<Rigidbody2D>();
+            if (body == null) continue;
+            if (body.bodyType == RigidbodyType2D.Dynamic && body.linearVelocity.sqrMagnitude > 0.04f)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
 public void RegisterTargetBroken(WarfestTarget target)
@@ -861,7 +895,14 @@ public void RegisterTargetBroken(WarfestTarget target)
         for (int i = 0; i < hits.Length; i++)
         {
             WarfestTarget target = hits[i].GetComponent<WarfestTarget>();
-            if (target != null && target != bomb) target.BreakFromExplosion();
+            if (target != null && target != bomb && !target.IsBroken)
+            {
+                // A bomb caught in the blast chains into its own explosion; everything else just
+                // breaks. Each target flips its broken flag before recursing, so an already-spent
+                // neighbour is skipped and the chain terminates instead of looping forever.
+                if (target.IsBomb) target.DetonateFromChain();
+                else target.BreakFromExplosion();
+            }
 
             Rigidbody2D body = hits[i].attachedRigidbody;
             if (body == null || !pushedBodies.Add(body)) continue;
@@ -917,8 +958,10 @@ public void RegisterTargetBroken(WarfestTarget target)
         colorOverLifetime.color = gradient;
 
         ParticleSystemRenderer particleRenderer = sparksObject.GetComponent<ParticleSystemRenderer>();
-        Shader particleShader = Shader.Find("Sprites/Default");
-        if (particleShader != null) particleRenderer.material = new Material(particleShader);
+        // Reuse one shared material for every explosion. Assigning `.material` (or `new Material`
+        // per burst) would leak a material each time a bomb goes off.
+        Material particleMaterial = GetExplosionParticleMaterial();
+        if (particleMaterial != null) particleRenderer.sharedMaterial = particleMaterial;
         particleRenderer.sortingOrder = 31;
         sparks.Play();
         Destroy(sparksObject, 1.25f);
@@ -940,6 +983,16 @@ public void RegisterTargetBroken(WarfestTarget target)
             yield return null;
         }
         if (flashTransform != null) Destroy(flashTransform.gameObject);
+    }
+
+    private Material GetExplosionParticleMaterial()
+    {
+        if (explosionParticleMaterial != null) return explosionParticleMaterial;
+        Shader particleShader = Shader.Find("Sprites/Default");
+        if (particleShader == null) particleShader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (particleShader == null) return null;
+        explosionParticleMaterial = new Material(particleShader) { name = "Warfest Explosion Sparks" };
+        return explosionParticleMaterial;
     }
 
     private Sprite GetExplosionSprite()
@@ -1027,10 +1080,6 @@ private void BuildHud()
 private void RefreshHud()
     {
         if (ballsText != null) ballsText.text = remainingBalls.ToString("00");
-        for (int i = 0; i < ballSlots.Count; i++)
-        {
-            ballSlots[i].color = i < remainingBalls ? Ink : DisabledBall;
-        }
     }
 
 private void ShowFailure()
@@ -1290,6 +1339,15 @@ public sealed class WarfestTarget : MonoBehaviour
         if (broken) return;
         broken = true;
         controller.RegisterTargetBroken(this);
+    }
+
+    // A bomb shoved by a neighbouring blast triggers its own explosion, producing the
+    // chain-reaction the bomb-heavy levels are designed around.
+    public void DetonateFromChain()
+    {
+        if (broken) return;
+        broken = true;
+        controller.DetonateBomb(this);
     }
 
     private void Update()
