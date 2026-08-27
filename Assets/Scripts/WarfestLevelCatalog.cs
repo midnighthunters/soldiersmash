@@ -80,6 +80,11 @@ public static class WarfestLevelCatalog
     public const float ModelColPitch = 0.72f;
     public const float ModelRowStep = 0.72f;
 
+    // World-space z of the two visual crate planes. Must stay in sync with CreateModelBox so the
+    // table can be centred under the stack in depth.
+    public const float FrontLayerZ = 0.08f;
+    public const float RearLayerZ = 0.72f;
+
     public struct LevelDefinition
     {
         public int number;
@@ -299,6 +304,9 @@ public static class WarfestLevelCatalog
 
         float minX = float.MaxValue;
         float maxX = float.MinValue;
+        float minZ = float.MaxValue;
+        float maxZ = float.MinValue;
+        const float halfDepth = 0.36f; // half-depth of a standard crate plane
         for (int i = 0; i < layout.Count; i++)
         {
             ModelBlockSpec s = layout[i];
@@ -306,12 +314,23 @@ public static class WarfestLevelCatalog
             float halfWidth = 0.5f * (Mathf.Abs(s.width * Mathf.Cos(rad)) + Mathf.Abs(s.height * Mathf.Sin(rad)));
             minX = Mathf.Min(minX, s.x - halfWidth);
             maxX = Mathf.Max(maxX, s.x + halfWidth);
+
+            float layerZ = s.depthLayer == 0 ? FrontLayerZ : RearLayerZ;
+            minZ = Mathf.Min(minZ, layerZ - halfDepth);
+            maxZ = Mathf.Max(maxZ, layerZ + halfDepth);
         }
-        if (layout.Count == 0) { minX = -1.5f; maxX = 1.5f; }
+        if (layout.Count == 0)
+        {
+            minX = -1.5f; maxX = 1.5f;
+            minZ = FrontLayerZ - halfDepth; maxZ = RearLayerZ + halfDepth;
+        }
 
         float center = (minX + maxX) * 0.5f;
         float width = (maxX - minX) + 1.2f;
-        tables.Add(new ModelTableSpec(center, width, -0.351f));
+        // Centre the table under the crate stack in depth so the blocks visibly rest ON the
+        // tabletop rather than floating in front of it (see CreateModelTable / CreateModelBox).
+        float depthCenter = (minZ + maxZ) * 0.5f;
+        tables.Add(new ModelTableSpec(center, width, -0.351f, depthCenter));
     }
 
     // ==========================================================================================

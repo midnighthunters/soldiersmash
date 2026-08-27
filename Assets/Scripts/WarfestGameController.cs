@@ -522,7 +522,7 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         string layerName = spec.depthLayer == 0 ? "Front" : "Rear";
         GameObject block = new GameObject(layerName + " Crate " + (index + 1).ToString("00"));
         block.transform.SetParent(worldRoot, false);
-        float renderDepth = spec.depthLayer == 0 ? 0.08f : 0.72f;
+        float renderDepth = spec.depthLayer == 0 ? WarfestLevelCatalog.FrontLayerZ : WarfestLevelCatalog.RearLayerZ;
         block.transform.localPosition = new Vector3(spec.x, 0f, renderDepth);
 
         GameObject visual = Instantiate(prefab);
@@ -776,12 +776,38 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
         RefreshHud();
         Vector2 launchPosition = muzzle.position;
         Vector2 launchDirection = hasAimPoint ? aimWorldPosition - launchPosition : (Vector2)muzzle.up;
-        CreateBall(launchPosition, launchDirection);
+
+        // Precision aiming: if the player tapped directly on a block, the shot is committed to that
+        // exact block so it lands where they aimed instead of stopping at whatever crate happens to
+        // sit lower in the trajectory.
+        WarfestTarget intendedTarget = hasAimPoint ? FindTargetAt(aimWorldPosition) : null;
+        CreateBall(launchPosition, launchDirection, intendedTarget);
 
         if (remainingBalls <= 0 && targetsRemaining > 0) StartCoroutine(ShowFailureAfterDelay());
     }
 
-    private void CreateBall(Vector2 position, Vector2 direction)
+    // Returns the front-most unbroken target whose collider contains the tapped world point, so a
+    // shot resolves against the exact block the player aimed at (front plane wins ties on depth).
+    private WarfestTarget FindTargetAt(Vector2 point)
+    {
+        Collider2D[] overlaps = Physics2D.OverlapPointAll(point);
+        WarfestTarget best = null;
+        float bestZ = float.MaxValue;
+        for (int i = 0; i < overlaps.Length; i++)
+        {
+            WarfestTarget target = overlaps[i].GetComponent<WarfestTarget>();
+            if (target == null || target.IsBroken) continue;
+            float z = overlaps[i].transform.position.z;
+            if (z < bestZ)
+            {
+                bestZ = z;
+                best = target;
+            }
+        }
+        return best;
+    }
+
+    private void CreateBall(Vector2 position, Vector2 direction, WarfestTarget intendedTarget = null)
     {
         GameObject ball = new GameObject("Shot Ball", typeof(CircleCollider2D), typeof(Rigidbody2D), typeof(WarfestBall));
 
@@ -818,6 +844,23 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
 
         CircleCollider2D collider = ball.GetComponent<CircleCollider2D>();
         collider.radius = ShotRadius;
+
+        // When the shot is committed to a specific tapped block, let it pass through every other
+        // block so it strikes exactly what the player aimed at instead of the nearest crate in line.
+        if (intendedTarget != null)
+        {
+            Collider2D targetCollider = intendedTarget.GetComponent<Collider2D>();
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                if (blocks[i] == null) continue;
+                Collider2D blockCollider = blocks[i].GetComponent<Collider2D>();
+                if (blockCollider != null && blockCollider != targetCollider)
+                {
+                    Physics2D.IgnoreCollision(collider, blockCollider, true);
+                }
+            }
+        }
+
         Rigidbody2D body = ball.GetComponent<Rigidbody2D>();
         body.bodyType = RigidbodyType2D.Dynamic;
         body.mass = 0.22f;
