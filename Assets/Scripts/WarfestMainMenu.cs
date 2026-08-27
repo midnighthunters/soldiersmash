@@ -1,13 +1,21 @@
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
+// Runs in the editor as well as at runtime so the fully generated menu is previewable in edit
+// mode. Everything it builds is regenerated on demand and flagged DontSave, so the scene file
+// stays lean (just the camera and this controller) while the Game view matches play mode.
+[ExecuteAlways]
 public sealed class WarfestMainMenu : MonoBehaviour
 {
+    private const string GeneratedCanvasName = "Main Menu Canvas";
+
     private static readonly Color Navy = new Color(0.08f, 0.16f, 0.24f, 1f);
     private static readonly Color DeepGreen = new Color(0.13f, 0.23f, 0.08f, 1f);
     private static readonly Color Cream = new Color(1f, 0.98f, 0.88f, 1f);
-    private static readonly Color Gold = new Color(1f, 0.77f, 0.12f, 1f);
 
     [SerializeField] private Font headingFont;
     [SerializeField] private Font bodyFont;
@@ -18,9 +26,72 @@ public sealed class WarfestMainMenu : MonoBehaviour
     private CanvasScaler canvasScaler;
     private Vector2 appliedReferenceResolution;
     private Rect appliedSafeArea;
+    private Canvas menuCanvas;
+    private GameObject createdEventSystem;
 
-    private void Start()
+    private void OnEnable()
     {
+        if (Application.isPlaying)
+        {
+            Rebuild();
+            return;
+        }
+
+#if UNITY_EDITOR
+        // Building a full UI tree while the scene is still loading / the inspector is refreshing
+        // can trip Unity's "don't create objects during OnEnable" guard, so defer one tick.
+        EditorApplication.delayCall -= EditorDeferredBuild;
+        EditorApplication.delayCall += EditorDeferredBuild;
+        // Drop the editor preview the instant we leave edit mode so its objects can never carry
+        // over into play mode (and from there into another scene such as the Game scene).
+        EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+        EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+#endif
+    }
+
+    private void OnDisable()
+    {
+#if UNITY_EDITOR
+        EditorApplication.delayCall -= EditorDeferredBuild;
+        EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+#endif
+        // Tear the editor preview down cleanly; at runtime Unity handles scene teardown for us.
+        if (!Application.isPlaying)
+        {
+            Teardown();
+        }
+    }
+
+#if UNITY_EDITOR
+    private void EditorDeferredBuild()
+    {
+        if (this == null || Application.isPlaying || !isActiveAndEnabled)
+        {
+            return;
+        }
+
+        Rebuild();
+    }
+
+    private void OnPlayModeStateChanged(PlayModeStateChange state)
+    {
+        if (state == PlayModeStateChange.ExitingEditMode)
+        {
+            Teardown();
+        }
+    }
+#endif
+
+    private void Update()
+    {
+        ApplyCanvasScale();
+        ApplySafeArea();
+    }
+
+    private void Rebuild()
+    {
+        Teardown();
+
         fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         panelSheet = Resources.Load<Texture2D>("pnl");
 
@@ -31,25 +102,85 @@ public sealed class WarfestMainMenu : MonoBehaviour
             mainCamera.backgroundColor = new Color(0.63f, 0.78f, 0.49f, 1f);
         }
 
-        EnsureEventSystem();
+        // The editor preview only needs to render; input (and therefore an EventSystem) is a
+        // play-mode concern, so we skip it in edit mode to keep the scene uncluttered.
+        if (Application.isPlaying)
+        {
+            EnsureEventSystem();
+        }
+
         BuildMenu();
+
+        if (!Application.isPlaying && menuCanvas != null)
+        {
+            SetHideFlagsRecursively(menuCanvas.gameObject, HideFlags.DontSave);
+        }
     }
 
-    private void Update()
+    private void Teardown()
     {
-        ApplyCanvasScale();
-        ApplySafeArea();
+        // Destroy any menu canvas we generated earlier, including one orphaned by a domain
+        // reload (the managed reference is cleared but the DontSave object can survive).
+        Canvas[] canvases = Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (Canvas canvas in canvases)
+        {
+            if (canvas != null && canvas.gameObject.name == GeneratedCanvasName)
+            {
+                SafeDestroy(canvas.gameObject);
+            }
+        }
+
+        menuCanvas = null;
+        safeAreaRoot = null;
+        canvasScaler = null;
+        appliedReferenceResolution = Vector2.zero;
+        appliedSafeArea = new Rect();
+
+        if (createdEventSystem != null)
+        {
+            SafeDestroy(createdEventSystem);
+            createdEventSystem = null;
+        }
+    }
+
+    private static void SafeDestroy(Object target)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        if (Application.isPlaying)
+        {
+            Destroy(target);
+        }
+        else
+        {
+            DestroyImmediate(target);
+        }
+    }
+
+    private static void SetHideFlagsRecursively(GameObject root, HideFlags flags)
+    {
+        root.hideFlags = flags;
+        foreach (Transform child in root.transform)
+        {
+            SetHideFlagsRecursively(child.gameObject, flags);
+        }
     }
 
     private void EnsureEventSystem()
     {
         if (EventSystem.current != null) return;
-        new GameObject("EventSystem", typeof(EventSystem), typeof(UnityEngine.InputSystem.UI.InputSystemUIInputModule));
+        createdEventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(UnityEngine.InputSystem.UI.InputSystemUIInputModule));
+        // Own it under this controller so it is torn down with the scene rather than lingering.
+        createdEventSystem.transform.SetParent(transform, false);
     }
 
     private void BuildMenu()
     {
-        Canvas canvas = CreateCanvas("Main Menu Canvas");
+        Canvas canvas = CreateCanvas(GeneratedCanvasName);
+        menuCanvas = canvas;
         RectTransform root = canvas.transform as RectTransform;
         CreateBackground(root);
         safeAreaRoot = CreateSafeAreaRoot(root);
@@ -112,22 +243,17 @@ public sealed class WarfestMainMenu : MonoBehaviour
         Image tent = CreateSheetImage(safeAreaRoot, "Command Tent", new Rect(376f, 203f, 423f, 342f),
             new Vector2(0.81f, 0.51f), new Vector2(0.44f, 0.27f));
         tent.color = new Color(1f, 1f, 1f, 0.88f);
-
-        CreateSheetImage(safeAreaRoot, "No Ads Badge", new Rect(1063f, 282f, 174f, 200f),
-            new Vector2(0.88f, 0.66f), new Vector2(0.17f, 0.12f));
-        CreateOutlinedText(safeAreaRoot, "No Ads Label", "NO ADS", 12, Gold, TextAnchor.MiddleCenter,
-            new Vector2(0.88f, 0.627f), new Vector2(0.15f, 0.026f), bodyFont, DeepGreen, 0.8f);
     }
 
     private void BuildMissionCard(WarfestLevelCatalog.LevelDefinition level, int balls)
     {
-        RectTransform card = CreateContainer(safeAreaRoot, "Mission Card", new Vector2(0.5f, 0.285f), new Vector2(0.86f, 0.34f));
+        RectTransform card = CreateContainer(safeAreaRoot, "Mission Card", new Vector2(0.5f, 0.29f), new Vector2(0.74f, 0.30f));
         CreateSheetImage(card, "Cream Frame", new Rect(8f, 540f, 441f, 305f), new Vector2(0.5f, 0.5f), Vector2.one);
 
         CreateSheetImage(card, "Progress Track", new Rect(458f, 763f, 365f, 82f),
             new Vector2(0.47f, 0.91f), new Vector2(0.72f, 0.16f));
         Image progress = CreateSheetImage(card, "Progress Fill", new Rect(216f, 866f, 550f, 60f),
-            new Vector2(0.18f, 0.91f), new Vector2(0.29f, 0.075f));
+            new Vector2(0.47f, 0.91f), new Vector2(0.66f, 0.06f));
         progress.type = Image.Type.Filled;
         progress.fillMethod = Image.FillMethod.Horizontal;
         progress.fillOrigin = 0;
@@ -176,26 +302,37 @@ public sealed class WarfestMainMenu : MonoBehaviour
     {
         RectTransform nav = CreateContainer(safeAreaRoot, "Bottom Navigation", new Vector2(0.5f, 0.075f), new Vector2(0.96f, 0.15f));
 
-        CreateSheetImage(nav, "Left Tile", new Rect(5f, 963f, 210f, 178f),
-            new Vector2(0.17f, 0.46f), new Vector2(0.33f, 0.92f));
-        CreateSheetImage(nav, "Armory", new Rect(237f, 960f, 205f, 181f),
-            new Vector2(0.17f, 0.5f), new Vector2(0.22f, 0.72f));
+        // Only Home is active. The shop and trophy tiles are shown dimmed to read as disabled.
+        Color disabledTint = new Color(0.5f, 0.53f, 0.5f, 0.6f);
 
+        // Left (shop) - disabled, aligned on the shared baseline.
+        Image leftTile = CreateSheetImage(nav, "Left Tile", new Rect(5f, 963f, 210f, 178f),
+            new Vector2(0.19f, 0.5f), new Vector2(0.3f, 0.88f));
+        leftTile.color = disabledTint;
+        Image armory = CreateSheetImage(nav, "Armory", new Rect(237f, 960f, 205f, 181f),
+            new Vector2(0.19f, 0.52f), new Vector2(0.19f, 0.62f));
+        armory.color = disabledTint;
+
+        // Center (home) - active, slightly larger so it reads as the selected tab.
         Button home = CreateSheetButton(nav, "Home Tab", new Rect(442f, 930f, 370f, 224f),
-            new Vector2(0.5f, 0.53f), new Vector2(0.42f, 1.05f));
+            new Vector2(0.5f, 0.5f), new Vector2(0.34f, 1.0f));
         home.onClick.AddListener(WarfestSession.ReturnToMenu);
-        CreateOutlinedText(home.transform, "Home Label", "HOME", 19, Cream, TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 0.16f), new Vector2(0.7f, 0.18f), bodyFont, DeepGreen, 1.4f);
 
-        CreateSheetImage(nav, "Right Tile", new Rect(1038f, 963f, 211f, 178f),
-            new Vector2(0.83f, 0.46f), new Vector2(0.33f, 0.92f));
-        CreateSheetImage(nav, "Trophy", new Rect(824f, 962f, 204f, 185f),
-            new Vector2(0.83f, 0.5f), new Vector2(0.22f, 0.72f));
+        // Right (trophy) - disabled, mirrored to match the left tile exactly.
+        Image rightTile = CreateSheetImage(nav, "Right Tile", new Rect(1038f, 963f, 211f, 178f),
+            new Vector2(0.81f, 0.5f), new Vector2(0.3f, 0.88f));
+        rightTile.color = disabledTint;
+        Image trophy = CreateSheetImage(nav, "Trophy", new Rect(824f, 962f, 204f, 185f),
+            new Vector2(0.81f, 0.52f), new Vector2(0.19f, 0.62f));
+        trophy.color = disabledTint;
     }
 
     private Canvas CreateCanvas(string name)
     {
         GameObject gameObject = new GameObject(name, typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        // Parent under this controller so the canvas is owned by (and destroyed with) this scene.
+        // A scene-root object can otherwise linger across a scene load and appear in the Game scene.
+        gameObject.transform.SetParent(transform, false);
         Canvas canvas = gameObject.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
 

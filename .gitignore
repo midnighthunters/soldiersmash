@@ -12,7 +12,7 @@
 /[Rr]ecordings/
 
 # Local Unity resources
-/Assets/[Rr]esources/
+/Assets/Resources/
 /Assets/[Rr]esources.meta
 
 # Local IDE and editor data
@@ -23,3 +23,5 @@
 /*.suo
 /*.user
 /*.userprefs
+Assets/QA/LevelScreenshots/
+Assets/Screenshots/

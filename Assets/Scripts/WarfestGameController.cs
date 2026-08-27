@@ -52,7 +52,9 @@ public sealed class WarfestGameController : MonoBehaviour
     private int targetsRemaining;
 
 
-    private bool fireInputArmed;
+    private bool isAiming;
+    private bool gestureBlocked;
+    private LineRenderer aimLine;
     private bool hasAimPoint;
     private Vector2 aimWorldPosition;
     private bool modelPhysicsReleased;
@@ -278,26 +280,89 @@ private void Update()
 
         if (levelEnded || gameplayCamera == null || muzzle == null) return;
 
+        // A shot must begin with a new press inside this gameplay scene. This prevents the
+        // release of the menu-selection click/tap from becoming an unintended first shot.
         if (!TryGetPointer(out Vector2 position, out bool held, out bool pressedThisFrame))
         {
-            fireInputArmed = true;
+            CancelAim();
             return;
         }
 
-        // A complete release is required before every shot. This prevents a held touch,
-        // play-mode focus change, or stale pointer state from ever auto-firing.
-        if (!held)
+        if (pressedThisFrame)
         {
-            fireInputArmed = true;
+            isAiming = true;
+            hasAimPoint = false;
+            gestureBlocked = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+            if (!gestureBlocked)
+            {
+                AimAt(position);
+                UpdateAimLine();
+            }
             return;
         }
-        if (!fireInputArmed || !pressedThisFrame) return;
 
-        fireInputArmed = false;
-        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+        if (held)
+        {
+            if (isAiming && !gestureBlocked)
+            {
+                AimAt(position);
+                UpdateAimLine();
+            }
+            return;
+        }
 
-        AimAt(position);
-        Fire();
+        // Only a press that armed aiming above may fire on release.
+        if (isAiming)
+        {
+            bool shouldFire = !gestureBlocked && hasAimPoint;
+            isAiming = false;
+            gestureBlocked = false;
+            HideAimLine();
+            if (shouldFire) Fire();
+        }
+    }
+
+    private void CancelAim()
+    {
+        isAiming = false;
+        gestureBlocked = false;
+        HideAimLine();
+    }
+
+    // Draws the aim preview from the muzzle to the first block the shot would actually strike.
+    // The ball ignores the table layer, so the raycast does too - the line ends exactly where
+    // the projectile will land, making "aim where you shoot" unambiguous.
+    private void UpdateAimLine()
+    {
+        if (aimLine == null || muzzle == null) return;
+
+        Vector2 origin = muzzle.position;
+        Vector2 dir = aimWorldPosition - origin;
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            aimLine.enabled = false;
+            return;
+        }
+        dir.Normalize();
+
+        int mask = ~0;
+        int tableLayer = LayerMask.NameToLayer("WarfestTable");
+        int shotLayer = LayerMask.NameToLayer("WarfestShot");
+        if (tableLayer >= 0) mask &= ~(1 << tableLayer);
+        if (shotLayer >= 0) mask &= ~(1 << shotLayer);
+
+        const float maxLength = 14f;
+        RaycastHit2D hit = Physics2D.Raycast(origin, dir, maxLength, mask);
+        Vector2 end = hit.collider != null ? hit.point : origin + dir * maxLength;
+
+        aimLine.enabled = true;
+        aimLine.SetPosition(0, new Vector3(origin.x, origin.y, -0.3f));
+        aimLine.SetPosition(1, new Vector3(end.x, end.y, -0.3f));
+    }
+
+    private void HideAimLine()
+    {
+        if (aimLine != null) aimLine.enabled = false;
     }
 
     private void EnsureEventSystem()
@@ -451,7 +516,7 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         GameObject prefab = GetBoxPrefab(spec.variant);
         if (prefab == null) return;
 
-        const float tabletopGap = 0.004f;
+        const float tabletopGap = 0.001f;
         const float visualOverlap = 0.012f;
         const float colliderInset = 0.006f;
 
@@ -464,7 +529,7 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         GameObject visual = Instantiate(prefab);
         visual.name = "Visual";
         visual.transform.SetParent(block.transform, false);
-        visual.transform.localRotation = Quaternion.Euler(-90f, spec.variant == 4 ? 180f : 0f, 0f);
+        visual.transform.localRotation = Quaternion.Euler(-90f, GetModelYRotation(spec.variant), 0f);
         ApplyModelMaterial(visual, GetBoxMaterial(spec.variant));
 
         Bounds sourceBounds = GetModelBounds(visual);
@@ -475,25 +540,27 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
             visual.transform.localScale,
             new Vector3(widthScale, heightScale, depthScale));
 
-        Bounds bounds = GetModelBounds(visual);
-        Vector3 blockPos = block.transform.position;
-        visual.transform.localPosition += new Vector3(
-            blockPos.x - bounds.center.x,
-            blockPos.y - bounds.center.y,
-            blockPos.z - bounds.center.z);
+        Bounds fittedBounds = GetModelBounds(visual);
+        Vector3 blockPosition = block.transform.position;
+        visual.transform.position += blockPosition - fittedBounds.center;
+        float visualHeight = GetModelBounds(visual).size.y;
 
         int tableIndex = Mathf.Clamp(spec.tableIndex, 0, Mathf.Max(0, modelTableTopYs.Count - 1));
         float tableTopY = modelTableTopYs.Count > 0 ? modelTableTopYs[tableIndex] : -0.351f;
         float desiredBottomY = tableTopY + tabletopGap + spec.yOffset;
         block.transform.position = new Vector3(
-            blockPos.x,
-            desiredBottomY + spec.height * 0.5f,
-            blockPos.z);
+            blockPosition.x,
+            desiredBottomY + visualHeight * 0.5f,
+            blockPosition.z);
 
+        // Keep the physics footprint aligned with the visible bottom. Every base row touches the
+        // table surface, and each higher 0.72-unit row contacts the collider directly below it.
+        float colliderHeight = Mathf.Max(0.05f, spec.height);
         BoxCollider2D gameplayCollider = block.AddComponent<BoxCollider2D>();
         gameplayCollider.size = new Vector2(
             Mathf.Max(0.05f, spec.width - colliderInset),
-            Mathf.Max(0.05f, spec.height - colliderInset));
+            colliderHeight);
+        gameplayCollider.offset = new Vector2(0f, (colliderHeight - visualHeight) * 0.5f);
 
         // The two visual depth planes form independent physical stacks. Ignoring cross-layer
         // contacts keeps the slightly offset rear design from pushing the front layer apart.
@@ -518,6 +585,18 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         blocks.Add(block);
         blockDepthLayers.Add(spec.depthLayer);
     }
+
+private static float GetModelYRotation(int variant)
+    {
+        switch (variant)
+        {
+            case 2: return 90f;  // box3: sandbags face along the table width.
+            case 4: return 180f; // soldier faces the player.
+            case 6: return 180f; // bomb label and fuse face the player.
+            default: return 0f;
+        }
+    }
+
 
     private static Bounds GetModelBounds(GameObject model)
     {
@@ -568,6 +647,30 @@ private void CreatePistol()
         muzzle = new GameObject("Muzzle").transform;
         muzzle.SetParent(pistolPivot, false);
         muzzle.localPosition = new Vector3(0f, 1.14f, 0f);
+
+        CreateAimLine();
+    }
+
+    private void CreateAimLine()
+    {
+        GameObject aimLineObject = new GameObject("Aim Line", typeof(LineRenderer));
+        aimLineObject.transform.SetParent(worldRoot, false);
+        aimLine = aimLineObject.GetComponent<LineRenderer>();
+        aimLine.useWorldSpace = true;
+        aimLine.positionCount = 2;
+        aimLine.numCapVertices = 4;
+        aimLine.alignment = LineAlignment.View;
+        aimLine.startWidth = 0.10f;
+        aimLine.endWidth = 0.10f;
+
+        Shader lineShader = Shader.Find("Sprites/Default");
+        if (lineShader == null) lineShader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (lineShader != null) aimLine.material = new Material(lineShader);
+
+        aimLine.startColor = new Color(1f, 0.95f, 0.35f, 0.90f);
+        aimLine.endColor = new Color(1f, 0.95f, 0.35f, 0.10f);
+        aimLine.sortingOrder = 7;
+        aimLine.enabled = false;
     }
 
 private void CreateCannonBase()
@@ -905,8 +1008,8 @@ private void BuildHud()
 
         if (level.number != 1)
         {
-            CreateText(safeAreaRoot, "Instruction", "TAP A TARGET TO FIRE", 17, navy,
-                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.807f), new Vector2(0.65f, 0.045f), bodyFont);
+            CreateText(safeAreaRoot, "Instruction", "DRAG TO AIM  -  RELEASE TO FIRE", 15, navy,
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.807f), new Vector2(0.82f, 0.045f), bodyFont);
         }
     }
 
