@@ -290,383 +290,546 @@ public static class WarfestLevelCatalog
     {
         blocks.Clear();
 
-        // Levels 1-20 are individually hand-authored below (see AuthoredCampaign region) so each
-        // one is a visibly different structure. Levels 21+ fall back to the procedural generator.
+        // Levels 1-20 are individually hand-authored (see AuthoredCampaign). Levels 21-100 use a
+        // multi-family generator that keeps producing visibly different symmetric structures.
         if (BuildAuthoredLayout(zeroBasedLevel, blocks)) return;
-
-        int tier = Mathf.Clamp(zeroBasedLevel / 10, 0, 4);
-        int motif = ((zeroBasedLevel % 10) + 10) % 10;
-        int half = HalfWidth(zeroBasedLevel);
-        int peak = PeakHeight(zeroBasedLevel);
-
-        int[] profile = BuildProfile(motif, half, peak);
-
-        BuildFrontStructure(blocks, motif, profile);
-        if (tier >= 2) BuildRearSkyline(blocks, tier, profile);
-
-        InjectBombs(zeroBasedLevel, blocks);
+        BuildGeneratedLayout(zeroBasedLevel, blocks);
     }
 
     public static void FillModelTables(int zeroBasedLevel, List<ModelTableSpec> tables)
     {
         tables.Clear();
 
-        // Authored levels size their table to the exact footprint of the structure they hold,
-        // so asymmetric or unusually wide designs still rest fully on the surface.
-        List<ModelBlockSpec> authored = new List<ModelBlockSpec>();
-        if (BuildAuthoredLayout(zeroBasedLevel, authored))
+        // Size the table to the exact footprint of whatever structure the level builds, so wide,
+        // asymmetric or tilted designs still rest fully on the surface.
+        List<ModelBlockSpec> layout = new List<ModelBlockSpec>();
+        FillModelLayout(zeroBasedLevel, layout);
+
+        float minX = float.MaxValue;
+        float maxX = float.MinValue;
+        for (int i = 0; i < layout.Count; i++)
         {
-            float minX = float.MaxValue;
-            float maxX = float.MinValue;
-            for (int i = 0; i < authored.Count; i++)
-            {
-                float halfWidth = authored[i].width * 0.5f;
-                minX = Mathf.Min(minX, authored[i].x - halfWidth);
-                maxX = Mathf.Max(maxX, authored[i].x + halfWidth);
-            }
-            if (authored.Count == 0) { minX = -1f; maxX = 1f; }
-            float center = (minX + maxX) * 0.5f;
-            float authoredWidth = (maxX - minX) + 1.2f;
-            tables.Add(new ModelTableSpec(center, authoredWidth, -0.351f));
-            return;
+            ModelBlockSpec s = layout[i];
+            float rad = s.rotation * Mathf.Deg2Rad;
+            float halfWidth = 0.5f * (Mathf.Abs(s.width * Mathf.Cos(rad)) + Mathf.Abs(s.height * Mathf.Sin(rad)));
+            minX = Mathf.Min(minX, s.x - halfWidth);
+            maxX = Mathf.Max(maxX, s.x + halfWidth);
         }
+        if (layout.Count == 0) { minX = -1.5f; maxX = 1.5f; }
 
-        int tier = Mathf.Clamp(zeroBasedLevel / 10, 0, 4);
-        int half = HalfWidth(zeroBasedLevel);
-
-        // Wide enough that the whole mirrored structure - including its corner turrets - rests
-        // fully on the surface with a little margin to spare.
-        float width = (2 * half + 1) * ModelColPitch + 1.0f;
-        // Lower the table as the campaign gets taller so tall stacks stay clear of the frame top.
-        float topY = -0.351f - Mathf.Max(0, tier - 1) * 0.22f;
-        tables.Add(new ModelTableSpec(0f, width, topY));
+        float center = (minX + maxX) * 0.5f;
+        float width = (maxX - minX) + 1.2f;
+        tables.Add(new ModelTableSpec(center, width, -0.351f));
     }
 
     // ==========================================================================================
-    // #region AuthoredCampaign  --  levels 1-20 (zero-based 0-19)
+    // #region AuthoredCampaign  --  levels 1-100
     //
-    // Every level below is a distinct, deliberately designed structure rather than a variation
-    // of one silhouette. The campaign teaches the toolkit a piece at a time, in the spirit of
-    // physics knock-down games:
-    //   1-3   read the shot: small wall, lone tower, twin pillars
-    //   4-6   structure: gate + lintel, pyramid, heavy bunker
-    //   7-9   bombs & chains: bomb core, barrel depot, two-storey gatehouse
-    //   10-12 fortress ideas: the keep, staircase, split bomb-towers
-    //   13-15 set pieces: crenellated wall, grand arch, twin peaks valley
-    //   16-20 the big stuff: layered bastion, citadel, suspended deck, colossus, grand bastion
+    // Levels 1-20 are individually authored (1-4 follow the exact requested shapes). Levels
+    // 21-100 are produced by BuildGeneratedLayout, which cycles a dozen distinct, symmetric
+    // structure families and grows them with the level number, so the campaign keeps looking
+    // fresh instead of repeating one silhouette. Every layout is mirror-symmetric about x = 0
+    // (or built from mirrored pairs) and uses at least 18 blocks.
     //
-    // Grid: columns sit on a 0.72 pitch; RowY(r) = r * 0.72 is the bottom of row r. Toppers rest
-    // at RowY(columnHeight). Odd yOffsets (e.g. 1.80, 2.52) place a piece on top of a 0.36-tall
-    // lintel. Variants: 0 box, 1 box2 (heavy), 2 box3 (turret), 3 long_box (lintel/cap),
-    // 4 soldier (objective), 5 cannister (barrel), 6 bomb (chain-reaction target).
+    // Grid: columns sit on a 0.72 pitch; RowY(r) = r * 0.72 is the bottom of row r. Variants:
+    // 0 box, 1 box2 (heavy), 2 box3 (turret), 3 long_box (lintel/cap/plank), 4 soldier
+    // (objective), 5 cannister (barrel), 6 bomb (chain-reaction target). A block may carry a
+    // z-rotation for tilted layouts.
     // ==========================================================================================
 
     private static bool BuildAuthoredLayout(int zeroBasedLevel, List<ModelBlockSpec> b)
     {
         switch (zeroBasedLevel)
         {
-            case 0: Level01_LoneOutpost(b); return true;
-            case 1: Level02_Watchtower(b); return true;
-            case 2: Level03_TwinPillars(b); return true;
-            case 3: Level04_TheGate(b); return true;
-            case 4: Level05_Pyramid(b); return true;
-            case 5: Level06_HeavyBunker(b); return true;
-            case 6: Level07_BombCore(b); return true;
-            case 7: Level08_BarrelDepot(b); return true;
-            case 8: Level09_DoubleBridge(b); return true;
-            case 9: Level10_TheKeep(b); return true;
-            case 10: Level11_Staircase(b); return true;
-            case 11: Level12_SplitTowers(b); return true;
-            case 12: Level13_FortressWall(b); return true;
-            case 13: Level14_TheArch(b); return true;
-            case 14: Level15_TwinPeaks(b); return true;
-            case 15: Level16_LayeredBastion(b); return true;
-            case 16: Level17_TheCitadel(b); return true;
-            case 17: Level18_SuspendedDeck(b); return true;
-            case 18: Level19_TheColossus(b); return true;
-            case 19: Level20_WarfestBastion(b); return true;
+            case 0: Level01_FrontRearBlock(b); return true;
+            case 1: Level02_CannisterPyramid(b); return true;
+            case 2: Level03_FigureEights(b); return true;
+            case 3: Level04_TiltedTables(b); return true;
+            case 4: Level05_HollowFort(b); return true;
+            case 5: Level06_DoubleGate(b); return true;
+            case 6: Level07_BombCheckerboard(b); return true;
+            case 7: Level08_BarrelPyramid(b); return true;
+            case 8: Level09_TripleTowers(b); return true;
+            case 9: Level10_TwinDiamonds(b); return true;
+            case 10: Level11_LayeredWall(b); return true;
+            case 11: Level12_TwinPeaks(b); return true;
+            case 12: Level13_Battlements(b); return true;
+            case 13: Level14_Colonnade(b); return true;
+            case 14: Level15_StepPyramid(b); return true;
+            case 15: Level16_TowerBridges(b); return true;
+            case 16: Level17_Ziggurat(b); return true;
+            case 17: Level18_HollowKeep(b); return true;
+            case 18: Level19_Bastion(b); return true;
+            case 19: Level20_GrandBastion(b); return true;
             default: return false;
         }
     }
 
     // ---- authoring helpers ---------------------------------------------------------------------
 
-    // A single crate on the modular grid. heavy = box2 (variant 1), otherwise a light box.
     private static void Box(List<ModelBlockSpec> b, float x, int row, bool heavy)
         => AddModel(b, x, RowY(row), heavy ? 1 : 0);
 
-    // An alternating heavy/light column of `rows` crates (heavy on the ground for stability).
+    // Alternating heavy/light column of `rows` crates (heavy on the ground for stability).
     private static void Column(List<ModelBlockSpec> b, float x, int rows)
     {
         for (int r = 0; r < rows; r++) AddModel(b, x, RowY(r), (r % 2 == 0) ? 1 : 0);
     }
 
-    private static void Soldier(List<ModelBlockSpec> b, float x, int row)
-        => AddModel(b, x, RowY(row), 4, 0.72f, 0.72f);
+    // Same, but the crate at `bombRow` becomes a bomb.
+    private static void ColumnB(List<ModelBlockSpec> b, float x, int rows, int bombRow)
+    {
+        for (int r = 0; r < rows; r++)
+        {
+            if (r == bombRow) AddModel(b, x, RowY(r), 6, 0.56f, 0.72f);
+            else AddModel(b, x, RowY(r), (r % 2 == 0) ? 1 : 0);
+        }
+    }
 
-    private static void Cannister(List<ModelBlockSpec> b, float x, int row)
-        => AddModel(b, x, RowY(row), 5, 0.56f, 0.72f);
+    private static void Soldier(List<ModelBlockSpec> b, float x, int row) => AddModel(b, x, RowY(row), 4, 0.72f, 0.72f);
+    private static void Cannister(List<ModelBlockSpec> b, float x, int row) => AddModel(b, x, RowY(row), 5, 0.56f, 0.72f);
+    private static void Turret(List<ModelBlockSpec> b, float x, int row) => AddModel(b, x, RowY(row), 2, 0.36f, 0.72f);
+    private static void Lintel(List<ModelBlockSpec> b, float x, int row, float width) => AddModel(b, x, RowY(row), 3, width, 0.36f);
+    private static void Bomb(List<ModelBlockSpec> b, float x, int row) => AddModel(b, x, RowY(row), 6, 0.56f, 0.72f);
+    private static void At(List<ModelBlockSpec> b, float x, float y, int variant, float width, float height) => AddModel(b, x, y, variant, width, height);
 
-    private static void Turret(List<ModelBlockSpec> b, float x, int row)
-        => AddModel(b, x, RowY(row), 2, 0.36f, 0.72f);
-
-    // A horizontal long_box lintel / capstone spanning `width` world units, resting at row `row`.
-    private static void Lintel(List<ModelBlockSpec> b, float x, int row, float width)
-        => AddModel(b, x, RowY(row), 3, width, 0.36f);
-
-    private static void Bomb(List<ModelBlockSpec> b, float x, int row)
-        => AddModel(b, x, RowY(row), 6, 0.56f, 0.72f);
-
-    // Free-height placement (used to stand a piece on top of a 0.36-tall lintel deck).
-    private static void At(List<ModelBlockSpec> b, float x, float y, int variant, float width, float height)
-        => AddModel(b, x, y, variant, width, height);
-
-    // A rear-layer (depthLayer 1) column that rises behind the front silhouette for a skyline.
     private static void RearColumn(List<ModelBlockSpec> b, float x, int rows)
     {
         for (int r = 0; r < rows; r++) AddModel(b, x, RowY(r), (r % 2 == 0) ? 1 : 0, 0.72f, 0.72f, 1);
     }
+    private static void RearTurret(List<ModelBlockSpec> b, float x, int row) => AddModel(b, x, RowY(row), 2, 0.36f, 0.72f, 1);
 
-    private static void RearTurret(List<ModelBlockSpec> b, float x, int row)
-        => AddModel(b, x, RowY(row), 2, 0.36f, 0.72f, 1);
-
-    // ---- 1-3 : reading the shot ---------------------------------------------------------------
-
-    // A three-wide starter wall with a single objective on top. One good arc clears it.
-    private static void Level01_LoneOutpost(List<ModelBlockSpec> b)
+    // One topper per column of a symmetric wall: soldier centre, turrets on the ends, barrels and
+    // capstones alternating between.
+    private static void CrownColumns(List<ModelBlockSpec> b, int half, int topRow)
     {
-        Box(b, -0.72f, 0, true); Box(b, 0f, 0, true); Box(b, 0.72f, 0, true);
+        for (int c = -half; c <= half; c++)
+        {
+            float x = c * 0.72f;
+            int a = Mathf.Abs(c);
+            if (c == 0) Soldier(b, x, topRow);
+            else if (a == half) Turret(b, x, topRow);
+            else if (a % 2 == 1) Cannister(b, x, topRow);
+            else Lintel(b, x, topRow, 0.72f);
+        }
+    }
+
+    // A solid k x k block of crates rotated 45 degrees so it reads as a diamond, with a bomb core.
+    private static void DiamondBlock(List<ModelBlockSpec> b, float cx, float cy, int k, float spacing)
+    {
+        int half = (k - 1) / 2;
+        for (int i = -half; i <= half; i++)
+            for (int j = -half; j <= half; j++)
+            {
+                float ox = (i - j) * spacing * 0.7071f;
+                float oy = (i + j) * spacing * 0.7071f;
+                int variant = (i == 0 && j == 0) ? 6 : (((i + j) % 2 == 0) ? 1 : 0);
+                AddModel(b, cx + ox, cy + oy, variant, spacing, spacing, 0, 0, 45f);
+            }
+    }
+
+    // A tilted "table" (a long_box plank) at `angleDeg` carrying an n x n grid of cannisters on
+    // its upper face. Used by level 4.
+    private static void TiltedCannisterTable(List<ModelBlockSpec> b, float cx, float cy, float angleDeg, float spacing, int n)
+    {
+        float rad = angleDeg * Mathf.Deg2Rad;
+        float dx = Mathf.Cos(rad), dy = Mathf.Sin(rad);    // along the plank
+        float px = -Mathf.Sin(rad), py = Mathf.Cos(rad);   // out of the plank (up)
+        AddModel(b, cx, cy, 3, spacing * n, 0.32f, 0, 0, angleDeg);   // the tilted table
+        int half = (n - 1) / 2;
+        for (int col = -half; col <= half; col++)
+            for (int row = 0; row < n; row++)
+            {
+                float t = row + 0.85f;
+                float ox = col * spacing * dx + t * spacing * px;
+                float oy = col * spacing * dy + t * spacing * py;
+                AddModel(b, cx + ox, cy + oy, 5, spacing * 0.92f, spacing * 1.2f, 0, 0, angleDeg);
+            }
+    }
+
+    // A single figure-eight built from long_box rungs and short box uprights (two stacked loops).
+    private static void FigureEight(List<ModelBlockSpec> b, float cx)
+    {
+        const float rs = 0.5f;
+        AddModel(b, cx, 0 * rs, 3, 1.1f, 0.34f);
+        AddModel(b, cx, 3 * rs, 3, 1.1f, 0.34f);
+        AddModel(b, cx, 6 * rs, 3, 1.1f, 0.34f);
+        int[] rows = { 1, 2, 4, 5 };
+        for (int i = 0; i < rows.Length; i++)
+        {
+            AddModel(b, cx - 0.34f, rows[i] * rs, 0, 0.6f, 0.5f);
+            AddModel(b, cx + 0.34f, rows[i] * rs, 0, 0.6f, 0.5f);
+        }
+    }
+
+    // ---- levels 1-4 : exactly the requested shapes --------------------------------------------
+
+    // Front 3x3 wall, an identical 3x3 wall directly behind it, and a soldier objective on top.
+    private static void Level01_FrontRearBlock(List<ModelBlockSpec> b)
+    {
+        float[] xs = { -0.72f, 0f, 0.72f };
+        for (int c = 0; c < 3; c++)
+            for (int r = 0; r < 3; r++)
+            {
+                AddModel(b, xs[c], RowY(r), (r % 2 == 0) ? 1 : 0);              // front 3x3
+                AddModel(b, xs[c], RowY(r), (r % 2 == 0) ? 0 : 1, 0.72f, 0.72f, 1); // rear 3x3
+            }
+        Soldier(b, 0f, 3);
+    }
+
+    // A pyramid of cannisters only: 6 across the bottom rising to a single one at the apex.
+    private static void Level02_CannisterPyramid(List<ModelBlockSpec> b)
+    {
+        const float pitch = 0.62f;
+        const float rowStep = 0.6f;
+        for (int r = 0; r < 6; r++)
+        {
+            int count = 6 - r;
+            for (int i = 0; i < count; i++)
+            {
+                float x = (i - (count - 1) * 0.5f) * pitch;
+                AddModel(b, x, r * rowStep, 5, 0.56f, 0.72f);
+            }
+        }
+    }
+
+    // Two figure-eight patterns made only of long blocks and short blocks.
+    private static void Level03_FigureEights(List<ModelBlockSpec> b)
+    {
+        FigureEight(b, -1.35f);
+        FigureEight(b, 1.35f);
+    }
+
+    // Two 45-degree tilted tables, one leaning each way, each carrying a 5x5 grid of cannisters.
+    private static void Level04_TiltedTables(List<ModelBlockSpec> b)
+    {
+        TiltedCannisterTable(b, -1.9f, 0.6f, -45f, 0.4f, 5);
+        TiltedCannisterTable(b, 1.9f, 0.6f, 45f, 0.4f, 5);
+    }
+
+    // ---- levels 5-11 : bespoke set pieces -----------------------------------------------------
+
+    // A hollow fort: full base and top courses, side walls, a bomb in the courtyard, crenellations.
+    private static void Level05_HollowFort(List<ModelBlockSpec> b)
+    {
+        float[] xs = { -1.44f, -0.72f, 0f, 0.72f, 1.44f };
+        for (int i = 0; i < xs.Length; i++)
+        {
+            if (xs[i] == 0f) Bomb(b, 0f, 0); else Box(b, xs[i], 0, true);   // base course + courtyard bomb
+            Box(b, xs[i], 3, false);                                        // top course
+        }
+        Box(b, -1.44f, 1, true); Box(b, -1.44f, 2, false);                  // left wall
+        Box(b, 1.44f, 1, true); Box(b, 1.44f, 2, false);                    // right wall
+        CrownColumns(b, 2, 4);
+    }
+
+    // Two arches side by side over a three-pillar colonnade, objectives sheltering under each.
+    private static void Level06_DoubleGate(List<ModelBlockSpec> b)
+    {
+        Column(b, -1.6f, 3); Column(b, 0f, 3); Column(b, 1.6f, 3);
+        Lintel(b, -0.8f, 3, 1.9f); Lintel(b, 0.8f, 3, 1.9f);
+        Soldier(b, -0.8f, 0); Soldier(b, 0.8f, 0);
+        Turret(b, -1.6f, 3); Turret(b, 1.6f, 3);
+        At(b, 0f, 2.52f, 4, 0.72f, 0.72f);
+        At(b, -0.8f, 2.52f, 5, 0.56f, 0.72f); At(b, 0.8f, 2.52f, 5, 0.56f, 0.72f);
+    }
+
+    // A 5x5 grid with bombs seeded on a checkerboard through its core.
+    private static void Level07_BombCheckerboard(List<ModelBlockSpec> b)
+    {
+        float[] xs = { -1.44f, -0.72f, 0f, 0.72f, 1.44f };
+        for (int c = 0; c < 5; c++)
+            for (int r = 0; r < 5; r++)
+            {
+                bool bomb = ((r + c) % 2 == 0) && r > 0 && r < 4 && c > 0 && c < 4;
+                if (bomb) Bomb(b, xs[c], r);
+                else AddModel(b, xs[c], RowY(r), (r % 2 == 0) ? 1 : 0);
+            }
+        Soldier(b, 0f, 5);
+    }
+
+    // A wide heavy base carrying stacked rows of cannisters up to a lone objective.
+    private static void Level08_BarrelPyramid(List<ModelBlockSpec> b)
+    {
+        for (int c = -4; c <= 4; c++) Box(b, c * 0.72f, 0, true);          // 9-wide base
+        for (int c = -2; c <= 2; c++) AddModel(b, c * 0.72f, RowY(1), 5, 0.56f, 0.72f);
+        for (int c = -1; c <= 1; c++) AddModel(b, c * 0.72f, RowY(2), 5, 0.56f, 0.72f);
+        Soldier(b, 0f, 3);
+    }
+
+    // Three towers linked by two sky-bridges; the centre tower stands on a bomb.
+    private static void Level09_TripleTowers(List<ModelBlockSpec> b)
+    {
+        ColumnB(b, 0f, 4, 0);
+        Column(b, -1.8f, 4); Column(b, 1.8f, 4);
+        Lintel(b, -0.9f, 4, 1.95f); Lintel(b, 0.9f, 4, 1.95f);
+        Turret(b, -1.8f, 4); Turret(b, 1.8f, 4);
+        At(b, 0f, 3.24f, 4, 0.72f, 0.72f);
+        At(b, -0.9f, 3.24f, 5, 0.56f, 0.72f); At(b, 0.9f, 3.24f, 5, 0.56f, 0.72f);
+    }
+
+    // Two diamonds: solid blocks of crates rotated 45 degrees, each with a bomb at its core.
+    private static void Level10_TwinDiamonds(List<ModelBlockSpec> b)
+    {
+        DiamondBlock(b, -1.5f, 1.3f, 3, 0.62f);
+        DiamondBlock(b, 1.5f, 1.3f, 3, 0.62f);
+    }
+
+    // A crowned front wall with a bomb core, doubled by a full wall directly behind it.
+    private static void Level11_LayeredWall(List<ModelBlockSpec> b)
+    {
+        float[] xs = { -1.44f, -0.72f, 0f, 0.72f, 1.44f };
+        for (int i = 0; i < xs.Length; i++)
+        {
+            if (xs[i] == 0f) { Bomb(b, 0f, 0); Box(b, 0f, 1, false); Box(b, 0f, 2, false); }
+            else Column(b, xs[i], 3);
+            AddModel(b, xs[i], RowY(0), 1, 0.72f, 0.72f, 1);
+            AddModel(b, xs[i], RowY(1), 0, 0.72f, 0.72f, 1);
+        }
+        CrownColumns(b, 2, 3);
+        RearTurret(b, -1.44f, 2); RearTurret(b, 1.44f, 2);
+    }
+
+    // ---- levels 12-20 : larger set pieces built from the shared family library ----------------
+
+    private static void Level12_TwinPeaks(List<ModelBlockSpec> b) => FamTwinPeaks(b, 3, 5);
+    private static void Level13_Battlements(List<ModelBlockSpec> b) => FamWall(b, 4, 3, 2);
+    private static void Level14_Colonnade(List<ModelBlockSpec> b) => FamColonnade(b, 3, 4);
+    private static void Level15_StepPyramid(List<ModelBlockSpec> b) => FamPyramid(b, 4, 2);
+    private static void Level16_TowerBridges(List<ModelBlockSpec> b) => FamTowers(b, 4, 4);
+    private static void Level17_Ziggurat(List<ModelBlockSpec> b) => FamZiggurat(b, 4, 6);
+    private static void Level18_HollowKeep(List<ModelBlockSpec> b) => FamFort(b, 3, 5);
+    private static void Level19_Bastion(List<ModelBlockSpec> b) => FamBastion(b, 3, 6, 2);
+
+    private static void Level20_GrandBastion(List<ModelBlockSpec> b)
+    {
+        FamBastion(b, 4, 6, 3);
+        RearColumn(b, -1.44f, 4); RearColumn(b, 1.44f, 4);   // extra rear skyline towers
+        RearTurret(b, -1.44f, 4); RearTurret(b, 1.44f, 4);
+    }
+
+    // ==========================================================================================
+    // Shared symmetric structure families. Each is mirror-symmetric and, at the parameter ranges
+    // used, always spawns at least 18 blocks. They back both the later authored levels and the
+    // 21-100 generator.
+    // ==========================================================================================
+
+    private static void FamWall(List<ModelBlockSpec> b, int half, int rows, int bombCols)
+    {
+        half = Mathf.Clamp(half, 2, 4);
+        rows = Mathf.Clamp(rows, 2, 5);
+        int br = Mathf.Clamp(rows / 2, 1, rows - 1);
+        for (int c = -half; c <= half; c++)
+        {
+            bool bomb = bombCols > 0 && (Mathf.Abs(c) == 1 || (bombCols >= 3 && c == 0));
+            if (bomb) ColumnB(b, c * 0.72f, rows, br);
+            else Column(b, c * 0.72f, rows);
+        }
+        CrownColumns(b, half, rows);
+    }
+
+    private static void FamPyramid(List<ModelBlockSpec> b, int baseHalf, int bombs)
+    {
+        baseHalf = Mathf.Clamp(baseHalf, 3, 4);
+        for (int c = -baseHalf; c <= baseHalf; c++)
+        {
+            int h = baseHalf + 1 - Mathf.Abs(c);
+            if (bombs > 0 && Mathf.Abs(c) <= bombs - 1) ColumnB(b, c * 0.72f, h, 0);
+            else Column(b, c * 0.72f, h);
+        }
+        Soldier(b, 0f, baseHalf + 1);
+    }
+
+    private static void FamGate(List<ModelBlockSpec> b, int half, int height, int bombCols = 0)
+    {
+        half = Mathf.Clamp(half, 2, 4);
+        height = Mathf.Clamp(height, 3, 6);
+        int[] h = new int[half + 1];
+        for (int c = 0; c <= half; c++) h[c] = Mathf.Clamp(Mathf.RoundToInt(1 + (height - 1) * (float)c / half), 1, height);
+        for (int c = -half; c <= half; c++)
+        {
+            int d = Mathf.Abs(c);
+            if (d == 0) continue;                 // keep the archway open
+            if (bombCols > 0 && d <= bombCols) ColumnB(b, c * 0.72f, h[d], 0);   // bomb at the tower base
+            else Column(b, c * 0.72f, h[d]);
+        }
+        float bridgeY = RowY(h[1]);
+        AddModel(b, 0f, bridgeY, 3, 3f * 0.72f, 0.36f);   // lintel over the opening
+        Soldier(b, 0f, 0);                                // objective under the arch
+        Turret(b, -half * 0.72f, h[half]); Turret(b, half * 0.72f, h[half]);
+        At(b, 0f, bridgeY + 0.36f, 4, 0.72f, 0.72f);      // objective on the bridge
+    }
+
+    private static void FamTwinPeaks(List<ModelBlockSpec> b, int half, int peak)
+    {
+        half = Mathf.Clamp(half, 2, 4);
+        peak = Mathf.Clamp(peak, 4, 6);
+        int m = Mathf.Max(1, half / 2 + 1);
+        for (int c = -half; c <= half; c++)
+        {
+            int d = Mathf.Abs(c);
+            int hh = Mathf.Clamp(peak - 2 * Mathf.Abs(d - m), 1, peak);
+            if (d == 0) ColumnB(b, 0f, Mathf.Max(1, hh), 0);
+            else Column(b, c * 0.72f, Mathf.Max(1, hh));
+        }
+        Turret(b, -m * 0.72f, peak); Turret(b, m * 0.72f, peak);
         Soldier(b, 0f, 1);
     }
 
-    // A lone four-high watchtower capped with a barrel - teaches vertical aim and toppling.
-    private static void Level02_Watchtower(List<ModelBlockSpec> b)
+    private static void FamFort(List<ModelBlockSpec> b, int half, int height)
     {
-        Column(b, 0f, 4);
-        Cannister(b, 0f, 4);
+        half = Mathf.Clamp(half, 2, 4);
+        height = Mathf.Clamp(height, 4, 5);
+        for (int c = -half; c <= half; c++)
+        {
+            if (c == 0) Bomb(b, 0f, 0); else Box(b, c * 0.72f, 0, true);   // base course
+            Box(b, c * 0.72f, height - 1, false);                          // top course
+        }
+        for (int r = 1; r < height - 1; r++)
+        {
+            Box(b, -half * 0.72f, r, true);
+            Box(b, half * 0.72f, r, true);
+        }
+        CrownColumns(b, half, height);
     }
 
-    // Two separated pillars with different crowns; you must place two distinct shots.
-    private static void Level03_TwinPillars(List<ModelBlockSpec> b)
+    private static void FamTowers(List<ModelBlockSpec> b, int count, int height)
     {
-        Column(b, -1.08f, 3); Soldier(b, -1.08f, 3);
-        Column(b, 1.08f, 3); Cannister(b, 1.08f, 3);
+        count = Mathf.Clamp(count, 3, 5);
+        height = Mathf.Clamp(height, 3, 5);
+        const float span = 4.4f;
+        for (int i = 0; i < count; i++)
+        {
+            float x = -span * 0.5f + span * i / (count - 1);
+            bool bombBase = (i == 0 || i == count - 1 || (count % 2 == 1 && i == count / 2));
+            if (bombBase) ColumnB(b, x, height, 0); else Column(b, x, height);
+            if (count % 2 == 1 && i == count / 2) Soldier(b, x, height);
+            else if (i == 0 || i == count - 1) Turret(b, x, height);
+            else Cannister(b, x, height);
+        }
     }
 
-    // ---- 4-6 : structure ----------------------------------------------------------------------
-
-    // A gateway: two towers carry a long lintel, an objective shelters under the arch, and a
-    // second objective stands on the bridge. First appearance of the lintel piece.
-    private static void Level04_TheGate(List<ModelBlockSpec> b)
+    private static void FamColonnade(List<ModelBlockSpec> b, int bays, int height)
     {
-        Column(b, -1.08f, 2);
-        Column(b, 1.08f, 2);
-        Lintel(b, 0f, 2, 2.88f);            // spans both towers, bottom at y = 1.44
-        Soldier(b, 0f, 0);                  // sheltered under the arch
-        At(b, 0f, 1.80f, 4, 0.72f, 0.72f);  // stands on top of the bridge (lintel top = 1.80)
+        bays = Mathf.Clamp(bays, 2, 4);
+        height = Mathf.Clamp(height, 3, 4);
+        int pillars = bays + 1;
+        const float pitch = 0.95f;
+        float x0 = -(pillars - 1) * pitch * 0.5f;
+        for (int i = 0; i < pillars; i++)
+        {
+            float x = x0 + i * pitch;
+            Column(b, x, height);
+            Turret(b, x, height);
+        }
+        for (int i = 0; i < bays; i++)
+        {
+            float xc = x0 + (i + 0.5f) * pitch;
+            Lintel(b, xc, height, pitch + 0.4f);
+            Soldier(b, xc, 0);
+            At(b, xc, RowY(height) + 0.36f, 5, 0.56f, 0.72f);
+        }
     }
 
-    // The classic 5-3-1 pyramid crowned by an objective. Stable, so it rewards a low hard shot.
-    private static void Level05_Pyramid(List<ModelBlockSpec> b)
+    private static void FamZiggurat(List<ModelBlockSpec> b, int half, int peak)
     {
-        Box(b, -1.44f, 0, true); Box(b, -0.72f, 0, true); Box(b, 0f, 0, true); Box(b, 0.72f, 0, true); Box(b, 1.44f, 0, true);
-        Box(b, -0.72f, 1, false); Box(b, 0f, 1, true); Box(b, 0.72f, 1, false);
-        Box(b, 0f, 2, true);
-        Soldier(b, 0f, 3);
+        half = Mathf.Clamp(half, 3, 4);
+        peak = Mathf.Clamp(peak, 4, 6);
+        for (int c = -half; c <= half; c++)
+        {
+            int h = Mathf.Clamp(peak - (Mathf.Abs(c) + 1) / 2, 1, peak);
+            if (Mathf.Abs(c) <= 1) ColumnB(b, c * 0.72f, h, 0);
+            else Column(b, c * 0.72f, h);
+        }
+        Soldier(b, 0f, peak);
+        Turret(b, -half * 0.72f, Mathf.Clamp(peak - (half + 1) / 2, 1, peak));
+        Turret(b, half * 0.72f, Mathf.Clamp(peak - (half + 1) / 2, 1, peak));
     }
 
-    // A wide, low bunker of heavy crates finished with one topper per column (turret, barrel,
-    // objective, barrel, turret). Heavy and stable - teaches that mass resists a glancing hit.
-    private static void Level06_HeavyBunker(List<ModelBlockSpec> b)
+    private static void FamBastion(List<ModelBlockSpec> b, int half, int peak, int bombCols = 0)
     {
-        float[] xs = { -1.44f, -0.72f, 0f, 0.72f, 1.44f };
-        for (int i = 0; i < xs.Length; i++) { Box(b, xs[i], 0, true); Box(b, xs[i], 1, false); }
-        Turret(b, -1.44f, 2); Cannister(b, -0.72f, 2); Soldier(b, 0f, 2); Cannister(b, 0.72f, 2); Turret(b, 1.44f, 2);
+        FamGate(b, half, peak, bombCols);
+        RearColumn(b, 0f, peak + 1); RearTurret(b, 0f, peak + 1);
+        RearColumn(b, -half * 0.72f, Mathf.Max(2, peak - 1));
+        RearColumn(b, half * 0.72f, Mathf.Max(2, peak - 1));
     }
 
-    // ---- 7-9 : bombs & chains -----------------------------------------------------------------
-
-    // A 3x3 block with a bomb at its heart. One shot into the core chains to its neighbours.
-    private static void Level07_BombCore(List<ModelBlockSpec> b)
+    private static void FamDiamonds(List<ModelBlockSpec> b, int k)
     {
-        Box(b, -0.72f, 0, true); Box(b, 0f, 0, true); Box(b, 0.72f, 0, true);
-        Box(b, -0.72f, 1, false); Bomb(b, 0f, 1); Box(b, 0.72f, 1, false);
-        Box(b, -0.72f, 2, false); Box(b, 0f, 2, true); Box(b, 0.72f, 2, false);
-        Soldier(b, 0f, 3);
+        k = Mathf.Clamp(k, 3, 4);
+        DiamondBlock(b, -1.6f, 1.4f, k, 0.6f);
+        DiamondBlock(b, 1.6f, 1.4f, k, 0.6f);
     }
 
-    // Barrel-topped columns flank a central stack whose base is a bomb - detonating it drops the
-    // middle and rocks the barrels off their perches.
-    private static void Level08_BarrelDepot(List<ModelBlockSpec> b)
+    private static void FamChecker(List<ModelBlockSpec> b, int half, int rows)
     {
-        Column(b, -1.44f, 3); Cannister(b, -1.44f, 3);
-        Column(b, 1.44f, 3); Cannister(b, 1.44f, 3);
-        Bomb(b, 0f, 0); Box(b, 0f, 1, false); Box(b, 0f, 2, true); Cannister(b, 0f, 3);
+        half = Mathf.Clamp(half, 2, 4);
+        rows = Mathf.Clamp(rows, 3, 5);
+        for (int c = -half; c <= half; c++)
+            for (int r = 0; r < rows; r++)
+            {
+                bool bomb = ((r + c + 100) % 2 == 0) && r > 0 && r < rows - 1 && Mathf.Abs(c) < half;
+                if (bomb) Bomb(b, c * 0.72f, r);
+                else AddModel(b, c * 0.72f, RowY(r), (r % 2 == 0) ? 1 : 0);
+            }
+        Soldier(b, 0f, rows);
     }
 
-    // A two-storey gatehouse: two decks bridged by lintels, objectives on each floor.
-    private static void Level09_DoubleBridge(List<ModelBlockSpec> b)
+    private static void FamLayeredWall(List<ModelBlockSpec> b, int half, int rows)
     {
-        Column(b, -1.08f, 4);
-        Column(b, 1.08f, 4);
-        Lintel(b, 0f, 2, 2.88f);            // lower deck, bottom y = 1.44
-        Lintel(b, 0f, 4, 2.88f);            // upper deck, bottom y = 2.88
-        At(b, 0f, 1.80f, 4, 0.72f, 0.72f);  // objective on the lower deck
-        At(b, -0.72f, 3.24f, 5, 0.56f, 0.72f); // barrel on the upper deck
-        At(b, 0f, 3.24f, 4, 0.72f, 0.72f);     // objective on the upper deck
-        At(b, 0.72f, 3.24f, 5, 0.56f, 0.72f);  // barrel on the upper deck
+        half = Mathf.Clamp(half, 2, 4);
+        rows = Mathf.Clamp(rows, 2, 4);
+        int rearRows = Mathf.Max(2, rows);
+        for (int c = -half; c <= half; c++)
+        {
+            if (c == 0) { Bomb(b, 0f, 0); for (int r = 1; r < rows; r++) AddModel(b, 0f, RowY(r), (r % 2 == 0) ? 1 : 0); }
+            else Column(b, c * 0.72f, rows);
+            for (int r = 0; r < rearRows; r++) AddModel(b, c * 0.72f, RowY(r), (r % 2 == 0) ? 1 : 0, 0.72f, 0.72f, 1);
+        }
+        CrownColumns(b, half, rows);
     }
 
-    // ---- 10-12 : fortress ideas ---------------------------------------------------------------
+    // ==========================================================================================
+    // Levels 21-100 : cycle the families with size that grows with the level number.
+    // ==========================================================================================
 
-    // A keep: two corner towers with turrets, a two-high curtain wall between them, an objective
-    // on the wall and a bomb buried in the wall base.
-    private static void Level10_TheKeep(List<ModelBlockSpec> b)
+    private static void BuildGeneratedLayout(int zeroBasedLevel, List<ModelBlockSpec> b)
     {
-        Column(b, -1.44f, 3); Turret(b, -1.44f, 3);
-        Column(b, 1.44f, 3); Turret(b, 1.44f, 3);
-        Box(b, -0.72f, 0, true); Bomb(b, 0f, 0); Box(b, 0.72f, 0, true);
-        Box(b, -0.72f, 1, false); Box(b, 0f, 1, false); Box(b, 0.72f, 1, false);
-        Soldier(b, 0f, 2);
+        int fam = zeroBasedLevel % 12;
+        int t = zeroBasedLevel / 12;              // grows every twelve levels
+        int half = 3 + (t % 2);                   // 3 or 4 (keeps the footprint on-screen)
+        int peak = 4 + (t % 3);                   // 4..6
+
+        switch (fam)
+        {
+            case 0: FamWall(b, half, Mathf.Clamp(peak - 1, 3, 5), 1 + t % 3); break;
+            case 1: FamPyramid(b, Mathf.Clamp(half + 1, 3, 4), 1 + t % 2); break;
+            case 2: FamGate(b, half, peak, 1 + t % 2); break;
+            case 3: FamTwinPeaks(b, half, peak); break;
+            case 4: FamFort(b, half, Mathf.Clamp(peak - 1, 4, 5)); break;
+            case 5: FamTowers(b, 3 + t % 3, Mathf.Clamp(peak - 1, 3, 5)); break;
+            case 6: FamColonnade(b, 2 + t % 3, Mathf.Clamp(peak - 2, 3, 4)); break;
+            case 7: FamBastion(b, half, peak, 1 + t % 2); break;
+            case 8: FamZiggurat(b, Mathf.Clamp(half + 1, 3, 4), peak); break;
+            case 9: FamDiamonds(b, 3 + t % 2); break;
+            case 10: FamChecker(b, half, Mathf.Clamp(peak - 1, 3, 5)); break;
+            default: FamLayeredWall(b, half, Mathf.Clamp(peak - 2, 2, 4)); break;
+        }
+
+        EnsureMinBlocks(b, 18);
     }
 
-    // An ascending staircase 1-2-3-4-5 with an objective on the low step and a turret at the top.
-    private static void Level11_Staircase(List<ModelBlockSpec> b)
+    // Safety net: symmetric filler so no generated level ever dips below the minimum block count.
+    private static void EnsureMinBlocks(List<ModelBlockSpec> b, int min)
     {
-        Column(b, -1.44f, 1);
-        Column(b, -0.72f, 2);
-        Column(b, 0f, 3);
-        Column(b, 0.72f, 4);
-        Column(b, 1.44f, 5);
-        Soldier(b, -1.44f, 1);
-        Turret(b, 1.44f, 5);
-    }
-
-    // Two tall towers, far apart, each standing on a bomb; a small turret-topped guard sits in
-    // the gap. Detonating a base bomb fells an entire tower.
-    private static void Level12_SplitTowers(List<ModelBlockSpec> b)
-    {
-        Bomb(b, -1.44f, 0); Box(b, -1.44f, 1, false); Box(b, -1.44f, 2, true); Box(b, -1.44f, 3, false); Box(b, -1.44f, 4, true);
-        Soldier(b, -1.44f, 5);
-        Bomb(b, 1.44f, 0); Box(b, 1.44f, 1, false); Box(b, 1.44f, 2, true); Box(b, 1.44f, 3, false); Box(b, 1.44f, 4, true);
-        Cannister(b, 1.44f, 5);
-        Box(b, 0f, 0, true); Box(b, 0f, 1, false); Turret(b, 0f, 2);
-    }
-
-    // ---- 13-15 : set pieces -------------------------------------------------------------------
-
-    // A long crenellated fortress wall: seven-wide heavy base, an upper course with two bombs
-    // built into it, and a crown of turret / barrel / objective merlons.
-    private static void Level13_FortressWall(List<ModelBlockSpec> b)
-    {
-        float[] xs = { -2.16f, -1.44f, -0.72f, 0f, 0.72f, 1.44f, 2.16f };
-        for (int i = 0; i < xs.Length; i++) Box(b, xs[i], 0, true);
-        Box(b, -2.16f, 1, false); Bomb(b, -1.44f, 1); Box(b, -0.72f, 1, false); Box(b, 0f, 1, false);
-        Box(b, 0.72f, 1, false); Bomb(b, 1.44f, 1); Box(b, 2.16f, 1, false);
-        Turret(b, -2.16f, 2); Cannister(b, -0.72f, 2); Soldier(b, 0f, 2); Cannister(b, 0.72f, 2); Turret(b, 2.16f, 2);
-    }
-
-    // A grand arch: tall outer pillars, shorter inner shoulders, a lintel across the opening, a
-    // bomb keystone on the crown, barrels on the parapets and an objective beneath.
-    private static void Level14_TheArch(List<ModelBlockSpec> b)
-    {
-        Column(b, -1.44f, 4);
-        Column(b, -0.72f, 3);
-        Column(b, 0.72f, 3);
-        Column(b, 1.44f, 4);
-        Lintel(b, 0f, 3, 2.16f);            // spans the inner shoulders, top y = 2.52
-        Soldier(b, 0f, 0);                  // objective under the arch
-        At(b, 0f, 2.52f, 6, 0.56f, 0.72f);  // bomb keystone on the crown
-        Cannister(b, -1.44f, 4); Cannister(b, 1.44f, 4);
-    }
-
-    // An "M" of twin peaks with a bomb-laced valley between them and turret-crowned summits.
-    private static void Level15_TwinPeaks(List<ModelBlockSpec> b)
-    {
-        Box(b, -2.16f, 0, true); Box(b, -2.16f, 1, false);
-        Column(b, -1.44f, 4); Turret(b, -1.44f, 4);
-        Bomb(b, -0.72f, 0); Box(b, -0.72f, 1, false); Box(b, -0.72f, 2, true);
-        Bomb(b, 0f, 0); Soldier(b, 0f, 1);
-        Bomb(b, 0.72f, 0); Box(b, 0.72f, 1, false); Box(b, 0.72f, 2, true);
-        Column(b, 1.44f, 4); Turret(b, 1.44f, 4);
-        Box(b, 2.16f, 0, true); Box(b, 2.16f, 1, false);
-    }
-
-    // ---- 16-20 : the big stuff ----------------------------------------------------------------
-
-    // A layered bastion: a crowned front wall with a bomb at its centre, backed by two taller
-    // rear towers that rise into view as a skyline (first use of the rear depth layer).
-    private static void Level16_LayeredBastion(List<ModelBlockSpec> b)
-    {
-        float[] xs = { -1.44f, -0.72f, 0f, 0.72f, 1.44f };
-        for (int i = 0; i < xs.Length; i++) Box(b, xs[i], 1, false);
-        Box(b, -1.44f, 0, true); Box(b, -0.72f, 0, true); Bomb(b, 0f, 0); Box(b, 0.72f, 0, true); Box(b, 1.44f, 0, true);
-        Turret(b, -1.44f, 2); Cannister(b, -0.72f, 2); Soldier(b, 0f, 2); Cannister(b, 0.72f, 2); Turret(b, 1.44f, 2);
-        RearColumn(b, -0.72f, 4); RearTurret(b, -0.72f, 4);
-        RearColumn(b, 0.72f, 4); RearTurret(b, 0.72f, 4);
-    }
-
-    // A stepped citadel: a five-tower keep that climbs to a central spire, with three bombs
-    // seated in the tower bases and objectives / turrets / barrels crowning the profile.
-    private static void Level17_TheCitadel(List<ModelBlockSpec> b)
-    {
-        Box(b, -2.16f, 0, true); Box(b, -2.16f, 1, false); Box(b, -2.16f, 2, true); Turret(b, -2.16f, 3);
-        Box(b, -1.44f, 0, true); Box(b, -1.44f, 1, false); Cannister(b, -1.44f, 2);
-        Bomb(b, -0.72f, 0); Box(b, -0.72f, 1, false); Box(b, -0.72f, 2, true); Box(b, -0.72f, 3, false);
-        Bomb(b, 0f, 0); Box(b, 0f, 1, false); Box(b, 0f, 2, true); Box(b, 0f, 3, false); Box(b, 0f, 4, true); Soldier(b, 0f, 5);
-        Bomb(b, 0.72f, 0); Box(b, 0.72f, 1, false); Box(b, 0.72f, 2, true); Box(b, 0.72f, 3, false);
-        Box(b, 1.44f, 0, true); Box(b, 1.44f, 1, false); Cannister(b, 1.44f, 2);
-        Box(b, 2.16f, 0, true); Box(b, 2.16f, 1, false); Box(b, 2.16f, 2, true); Turret(b, 2.16f, 3);
-    }
-
-    // A suspended deck: two towers plus a fragile bomb-cored central pillar carry a wide platform
-    // loaded with objectives and barrels. Knock out a support and the whole deck comes down.
-    private static void Level18_SuspendedDeck(List<ModelBlockSpec> b)
-    {
-        Column(b, -1.44f, 4);
-        Column(b, 1.44f, 4);
-        Box(b, 0f, 0, true); Bomb(b, 0f, 1); Box(b, 0f, 2, false); Box(b, 0f, 3, true); // central support
-        Lintel(b, 0f, 4, 3.6f);             // the platform, top y = 3.24
-        At(b, -1.62f, 3.24f, 2, 0.36f, 0.72f);  // edge turret
-        At(b, -1.08f, 3.24f, 5, 0.56f, 0.72f);  // barrel
-        At(b, -0.36f, 3.24f, 4, 0.72f, 0.72f);  // objective
-        At(b, 0.36f, 3.24f, 4, 0.72f, 0.72f);   // objective
-        At(b, 1.08f, 3.24f, 5, 0.56f, 0.72f);   // barrel
-        At(b, 1.62f, 3.24f, 2, 0.36f, 0.72f);   // edge turret
-    }
-
-    // The colossus: a broad seven-wide wall with three bombs, backed by a single towering keep.
-    private static void Level19_TheColossus(List<ModelBlockSpec> b)
-    {
-        float[] xs = { -2.16f, -1.44f, -0.72f, 0f, 0.72f, 1.44f, 2.16f };
-        for (int i = 0; i < xs.Length; i++) Box(b, xs[i], 0, true);
-        Box(b, -2.16f, 1, false); Bomb(b, -1.44f, 1); Box(b, -0.72f, 1, false); Bomb(b, 0f, 1);
-        Box(b, 0.72f, 1, false); Bomb(b, 1.44f, 1); Box(b, 2.16f, 1, false);
-        Turret(b, -2.16f, 2); Cannister(b, -1.44f, 2); Soldier(b, -0.72f, 2); Soldier(b, 0f, 2);
-        Soldier(b, 0.72f, 2); Cannister(b, 1.44f, 2); Turret(b, 2.16f, 2);
-        RearColumn(b, 0f, 6); RearTurret(b, 0f, 6);   // the central keep towers over the wall
-    }
-
-    // The grand bastion finale: a central gate under a lintel, two corner keeps standing on bombs,
-    // a bomb under the arch and a keystone bomb, all backed by a three-tower rear skyline.
-    private static void Level20_WarfestBastion(List<ModelBlockSpec> b)
-    {
-        // corner keeps on bomb bases
-        Bomb(b, -1.44f, 0); Box(b, -1.44f, 1, false); Box(b, -1.44f, 2, true); Box(b, -1.44f, 3, false); Turret(b, -1.44f, 4);
-        Bomb(b, 1.44f, 0); Box(b, 1.44f, 1, false); Box(b, 1.44f, 2, true); Box(b, 1.44f, 3, false); Turret(b, 1.44f, 4);
-        // gate pillars
-        Column(b, -0.72f, 3);
-        Column(b, 0.72f, 3);
-        Lintel(b, 0f, 3, 2.16f);            // gate bridge, top y = 2.52
-        // the defended objective under the arch, with a bomb stacked above it
-        Soldier(b, 0f, 0); Bomb(b, 0f, 1);
-        At(b, 0f, 2.52f, 6, 0.56f, 0.72f);  // keystone bomb
-        At(b, -0.72f, 2.52f, 5, 0.56f, 0.72f); // barrels on the bridge
-        At(b, 0.72f, 2.52f, 5, 0.56f, 0.72f);
-        // rear skyline
-        RearColumn(b, -1.44f, 4);
-        RearColumn(b, 0f, 5);
-        RearColumn(b, 1.44f, 4);
+        float x = 0.72f;
+        int guard = 0;
+        while (b.Count < min && guard++ < 24)
+        {
+            AddModel(b, -x, 0f, 5, 0.56f, 0.72f, 1);
+            AddModel(b, x, 0f, 5, 0.56f, 0.72f, 1);
+            x += 0.72f;
+        }
     }
 
     // #endregion  --  AuthoredCampaign
