@@ -536,9 +536,13 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         float widthScale = (spec.width + visualOverlap) / sourceBounds.size.x;
         float heightScale = (spec.height + visualOverlap) / sourceBounds.size.y;
         float depthScale = Mathf.Min(widthScale, heightScale);
-        visual.transform.localScale = Vector3.Scale(
-            visual.transform.localScale,
-            new Vector3(widthScale, heightScale, depthScale));
+        // box3 is rotated to face across the table: local Y becomes world width and local Z
+        // becomes world height. Fit those axes explicitly so its visual matches the authored
+        // sandbag footprint and collider.
+        Vector3 fittedScale = spec.variant == 2
+            ? new Vector3(depthScale, widthScale, heightScale)
+            : new Vector3(widthScale, heightScale, depthScale);
+        visual.transform.localScale = Vector3.Scale(visual.transform.localScale, fittedScale);
 
         Bounds fittedBounds = GetModelBounds(visual);
         Vector3 blockPosition = block.transform.position;

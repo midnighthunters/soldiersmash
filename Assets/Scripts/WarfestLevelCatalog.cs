@@ -385,6 +385,8 @@ public static class WarfestLevelCatalog
             else if (c % 2 == 1) { variant = 5; width = 0.56f; } // cannister barrel
             else { variant = 3; width = 0.72f; }                 // long_box capstone
 
+            // Sandbags use the full grid-cell height while preserving their narrow corner
+            // footprint and the existing support placement.
             float height = variant == 3 ? 0.36f : 0.72f;
             AddModel(b, ColX(c), topY, variant, width, height);
             if (c > 0) AddModel(b, -ColX(c), topY, variant, width, height);
