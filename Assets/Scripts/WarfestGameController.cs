@@ -557,6 +557,13 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
             desiredBottomY + visualHeight * 0.5f,
             blockPosition.z);
 
+        // Tilted layouts (e.g. the 45-degree cannister tables) rotate the whole piece about its
+        // centre so both the visual and the physics collider tilt together.
+        if (Mathf.Abs(spec.rotation) > 0.01f)
+        {
+            block.transform.rotation = Quaternion.Euler(0f, 0f, spec.rotation);
+        }
+
         // Keep the physics footprint aligned with the visible bottom. Every base row touches the
         // table surface, and each higher 0.72-unit row contacts the collider directly below it.
         float colliderHeight = Mathf.Max(0.05f, spec.height);

@@ -3,7 +3,7 @@ using UnityEngine.SceneManagement;
 
 public static class WarfestSession
 {
-    public const int LevelCount = 50;
+    public const int LevelCount = 100;
     public const int DefaultBalls = 20;
     public const int LevelOneBalls = 60;
     public const int MaxLives = 5;

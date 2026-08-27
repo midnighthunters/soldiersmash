@@ -34,18 +34,19 @@ public static class WarfestLevelCatalog
         public float height;
         public int depthLayer;  // 0 = front, 1 = rear
         public int tableIndex;
+        public float rotation;  // z-axis rotation in degrees (0 = upright). Used for tilted layouts.
 
         public ModelBlockSpec(float x, float yOffset, int variant)
-            : this(x, yOffset, variant, variant == 2 ? 0.36f : 0.72f, variant == 3 ? 0.36f : 0.72f, 0, 0)
+            : this(x, yOffset, variant, variant == 2 ? 0.36f : 0.72f, variant == 3 ? 0.36f : 0.72f, 0, 0, 0f)
         {
         }
 
         public ModelBlockSpec(float x, float yOffset, int variant, float width, float height)
-            : this(x, yOffset, variant, width, height, 0, 0)
+            : this(x, yOffset, variant, width, height, 0, 0, 0f)
         {
         }
 
-        public ModelBlockSpec(float x, float yOffset, int variant, float width, float height, int depthLayer, int tableIndex)
+        public ModelBlockSpec(float x, float yOffset, int variant, float width, float height, int depthLayer, int tableIndex, float rotation = 0f)
         {
             this.x = x;
             this.yOffset = yOffset;
@@ -54,6 +55,7 @@ public static class WarfestLevelCatalog
             this.height = height;
             this.depthLayer = depthLayer;
             this.tableIndex = tableIndex;
+            this.rotation = rotation;
         }
     }
 
@@ -192,7 +194,7 @@ public static class WarfestLevelCatalog
     };
 
     // The complete campaign uses deterministic, authored 3D construction rules.
-    public const int AuthoredLevelCount = 50;
+    public const int AuthoredLevelCount = 100;
 
     private static readonly string[] Titles =
     {
@@ -279,9 +281,9 @@ public static class WarfestLevelCatalog
     private static float RowY(int row) => row * ModelRowStep;
 
     private static void AddModel(List<ModelBlockSpec> b, float x, float y, int variant,
-        float width = 0.72f, float height = 0.72f, int layer = 0, int table = 0)
+        float width = 0.72f, float height = 0.72f, int layer = 0, int table = 0, float rotation = 0f)
     {
-        b.Add(new ModelBlockSpec(x, y, variant, width, height, layer, table));
+        b.Add(new ModelBlockSpec(x, y, variant, width, height, layer, table, rotation));
     }
 
     public static void FillModelLayout(int zeroBasedLevel, List<ModelBlockSpec> blocks)
