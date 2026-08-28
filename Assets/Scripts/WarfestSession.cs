@@ -44,31 +44,19 @@ public static class WarfestSession
         }
     }
 
-    // Twice the maximum successful shot count recorded in
-    // Assets/QA/Level-01-100-repeat-report.csv. The report currently contains complete
-    // ten-attempt data for levels 1-46 and one successful attempt for level 47.
-    //
-    // Levels without a successful report row use the legacy allowance below rather than zero,
-    // so untested levels remain playable until their repeat data is available.
-    private static readonly int[] ReportBasedBallAllowances =
-    {
-        30, 12, 26, 30, 12, 16, 18, 22, 16, 8,
-        26, 36, 42, 18, 24, 18, 58, 36, 22, 44,
-        48, 10, 22, 82, 38, 38, 16, 28, 26, 22,
-        22, 32, 52, 10, 16, 66, 36, 26, 14, 18,
-        34, 14, 16, 28, 26, 10, 16
-    };
-
+    // The authored campaign scales its block budget from 20 (level 1) to 57 (level 100). Every
+    // block is a target, so the ball allowance is derived from that budget with a generous,
+    // stage-tapered margin above a competent clear (per the brief's shot-budget philosophy:
+    // ~25-40% extra early, easing toward ~15% late). This is a pre-playtest starting point.
     public static int GetBallAllowance(int zeroBasedLevel)
     {
         int levelIndex = Mathf.Clamp(zeroBasedLevel, 0, LevelCount - 1);
-        if (levelIndex < ReportBasedBallAllowances.Length)
-        {
-            return ReportBasedBallAllowances[levelIndex];
-        }
-
-        // Fallback for levels not yet represented by a successful report attempt.
-        return Mathf.Clamp(52 - levelIndex / 2, 28, 52);
+        int blocks = WarfestLevelCatalog.CampaignBlockCount(levelIndex);
+        float factor =
+            levelIndex < 10 ? 1.6f :
+            levelIndex < 30 ? 1.4f :
+            levelIndex < 60 ? 1.25f : 1.15f;
+        return Mathf.Clamp(Mathf.CeilToInt(blocks * factor) + 4, 20, 90);
     }
 
 public static void SelectLevel(int zeroBasedLevel)

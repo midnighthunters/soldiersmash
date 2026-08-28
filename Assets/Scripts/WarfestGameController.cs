@@ -128,26 +128,17 @@ private void LoadOriginalSprites()
         if (pistolSprite == null && pistolSprites.Length > 0) pistolSprite = pistolSprites[0];
         if (pistolBaseSprite == null && pistolSprites.Length > 1) pistolBaseSprite = pistolSprites[1];
 
-        boxModelPrefabs = new[]
+        // Canonical gameplay palette. The index MUST match the variant constants in
+        // WarfestLevelCatalog (BOX=0, BOX2=1, BOX3=2, LONG_BOX=3, LONG_BOX2=4, SOLDIER=5,
+        // CANNISTER=6, BOMB=7, KING=8). Every authored military set piece is built from these.
+        string[] modelFolders = { "box", "box2", "box3", "long_box", "long_box2", "soldier", "cannister", "bomb", "king" };
+        boxModelPrefabs = new GameObject[modelFolders.Length];
+        boxModelTextures = new Texture2D[modelFolders.Length];
+        for (int i = 0; i < modelFolders.Length; i++)
         {
-            Resources.Load<GameObject>("box/base_basic_shaded"),
-            Resources.Load<GameObject>("box2/base_basic_shaded"),
-            Resources.Load<GameObject>("box3/base_basic_shaded"),
-            Resources.Load<GameObject>("long_box/base_basic_shaded"),
-            Resources.Load<GameObject>("soldier/base_basic_shaded"),
-            Resources.Load<GameObject>("cannister/base_basic_shaded"),
-            Resources.Load<GameObject>("bomb/base_basic_shaded"),
-        };
-        boxModelTextures = new[]
-        {
-            Resources.Load<Texture2D>("box/shaded"),
-            Resources.Load<Texture2D>("box2/shaded"),
-            Resources.Load<Texture2D>("box3/shaded"),
-            Resources.Load<Texture2D>("long_box/shaded"),
-            Resources.Load<Texture2D>("soldier/shaded"),
-            Resources.Load<Texture2D>("cannister/shaded"),
-            Resources.Load<Texture2D>("bomb/shaded"),
-        };
+            boxModelPrefabs[i] = Resources.Load<GameObject>(modelFolders[i] + "/base");
+            boxModelTextures[i] = Resources.Load<Texture2D>(modelFolders[i] + "/shaded");
+        }
         boxModelMaterials = new Material[boxModelTextures.Length];
         for (int i = 0; i < boxModelTextures.Length; i++)
         {
@@ -166,7 +157,7 @@ private void LoadOriginalSprites()
         }
         if (!HasAnyBoxPrefab())
         {
-            Debug.LogError("The 3D crate levels require Resources/box, box2, box3, long_box, or soldier models.");
+            Debug.LogError("The 3D levels require the gameplay model set under Resources/{box,box2,box3,long_box,long_box2,soldier,cannister,bomb,king}/base.fbx.");
         }
         if (tableModelPrefab == null)
         {
@@ -174,14 +165,14 @@ private void LoadOriginalSprites()
         }
     }
 
-    private bool HasAnyBoxPrefab()
+private bool HasAnyBoxPrefab()
     {
-        if (boxModelPrefabs == null) return false;
+        if (boxModelPrefabs == null || boxModelPrefabs.Length == 0) return false;
         for (int i = 0; i < boxModelPrefabs.Length; i++)
         {
-            if (boxModelPrefabs[i] != null) return true;
+            if (boxModelPrefabs[i] == null) return false;
         }
-        return false;
+        return true;
     }
 
     private static Sprite CreateSheetSprite(Texture2D sheet, Rect rect, string spriteName)
@@ -245,18 +236,23 @@ private Material CreateBrightModelMaterial(Texture2D texture, string materialNam
 
     // Explicit gameplay weights for the authored 3D pieces. These values are intentionally
     // independent of visual size so long_box and the sandbag block can have matching weight.
-    private static float GetModelMass(int variant)
+private static float GetModelMass(int variant)
     {
+        // Every runtime target receives this Rigidbody2D mass. Weights are tuned per gameplay
+        // role, independent of visual size. box2 anchors the base, the king is the heavy crown
+        // piece, and light toppers (soldiers/barrels) topple readily when the structure is hit.
         switch (variant)
         {
-            case 0: return 0.24f; // box: very light
-            case 1: return 1.60f; // box1 / heavy crate
-            case 2: return 0.62f; // box2 / sandbag: moderately light
-            case 3: return 0.62f; // long_box: equal to sandbag
-            case 4: return 0.20f; // soldier: very light
-            case 5: return 0.16f; // cannister: lightest
-            case 6: return 0.32f; // bomb: light enough to move, heavy enough to aim at
-            default: return 0.55f;
+            case 0: return 1.20f; // box       : light structural brick
+            case 1: return 2.20f; // box2      : heavy structural brick (stable base)
+            case 2: return 1.00f; // box3      : slim turret / wedge
+            case 3: return 1.40f; // long_box  : chunky beam / lintel
+            case 4: return 1.10f; // long_box2 : flat plank / roof cap
+            case 5: return 0.80f; // soldier   : objective topper
+            case 6: return 1.00f; // cannister : barrel (rolls / shifts weight)
+            case 7: return 1.05f; // bomb      : explosive target
+            case 8: return 5.00f; // king      : important heavyweight crown piece
+            default: return 1.20f;
         }
     }
 
@@ -535,13 +531,17 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         float widthScale = (spec.width + visualOverlap) / sourceBounds.size.x;
         float heightScale = (spec.height + visualOverlap) / sourceBounds.size.y;
         float depthScale = Mathf.Min(widthScale, heightScale);
-        // box3 is rotated to face across the table: local Y becomes world width and local Z
-        // becomes world height. Fit those axes explicitly so its visual matches the authored
-        // sandbag footprint and collider.
-        Vector3 fittedScale = spec.variant == 2
-            ? new Vector3(depthScale, widthScale, heightScale)
-            : new Vector3(widthScale, heightScale, depthScale);
+        // Both requested models are fitted uniformly in depth and explicitly in the 2D gameplay plane.
+        Vector3 fittedScale = new Vector3(widthScale, depthScale, heightScale);
         visual.transform.localScale = Vector3.Scale(visual.transform.localScale, fittedScale);
+
+        // The long_box2 plank mesh is nearly flat in its depth axis, so a uniform fit would make
+        // it vanish edge-on. Pin its depth-axis local scale to a solid slab per art direction.
+        if (spec.variant == WarfestLevelCatalog.LONG_BOX2)
+        {
+            Vector3 ls = visual.transform.localScale;
+            visual.transform.localScale = new Vector3(ls.x, 30f, ls.z);
+        }
 
         Bounds fittedBounds = GetModelBounds(visual);
         Vector3 blockPosition = block.transform.position;
@@ -591,20 +591,18 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
 
         WarfestTarget target = block.AddComponent<WarfestTarget>();
-        target.Initialize(this, spec.variant == 6);
+        // Only the bomb variant carries explosive chain behaviour. Cannisters are ordinary
+        // physical targets (they shift weight and topple, but do not detonate).
+        target.Initialize(this, spec.variant == WarfestLevelCatalog.BOMB);
         blocks.Add(block);
         blockDepthLayers.Add(spec.depthLayer);
     }
 
 private static float GetModelYRotation(int variant)
     {
-        switch (variant)
-        {
-            case 2: return 90f;  // box3: sandbags face along the table width.
-            case 4: return 180f; // soldier faces the player.
-            case 6: return 180f; // bomb label and fuse face the player.
-            default: return 0f;
-        }
+        // Both models face the player. long_box2 (variant 0) is flipped 180 on Y per art direction,
+        // and the king keeps its front-facing 180 orientation.
+        return 180f;
     }
 
 
@@ -1123,12 +1121,6 @@ private void BuildHud()
         Button menu = CreateSpriteButton(safeAreaRoot, "Settings Menu", settingsPanelSprite,
             new Vector2(0.865f, 0.937f), new Vector2(0.18f, 0.092f));
         menu.onClick.AddListener(WarfestSession.ReturnToMenu);
-
-        if (level.number != 1)
-        {
-            CreateText(safeAreaRoot, "Instruction", "DRAG TO AIM  -  RELEASE TO FIRE", 15, navy,
-                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.807f), new Vector2(0.82f, 0.045f), bodyFont);
-        }
     }
 
 private void RefreshHud()

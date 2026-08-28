@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public static class WarfestLevelCatalog
+public static partial class WarfestLevelCatalog
 {
     public struct BlockSpec
     {
@@ -29,7 +29,7 @@ public static class WarfestLevelCatalog
     {
         public float x;
         public float yOffset;
-        public int variant;     // 0 = box, 1 = box2, 2 = box3, 3 = long_box, 4 = soldier, 5 = cannister, 6 = bomb
+        public int variant;     // 0 = long_box2 structural block, 1 = king heavyweight block
         public float width;
         public float height;
         public int depthLayer;  // 0 = front, 1 = rear
@@ -246,7 +246,7 @@ public static class WarfestLevelCatalog
         return new LevelDefinition
         {
             number = index + 1,
-            title = Titles[theme],
+            title = CampaignName(index),
             subtitle = "OPERATION " + (index + 1).ToString("00") + " // " + Motifs[theme],
             motif = Motifs[theme],
             background = Backgrounds[theme],
@@ -294,21 +294,117 @@ public static class WarfestLevelCatalog
         b.Add(new ModelBlockSpec(x, y, variant, width, height, layer, table, rotation));
     }
 
-    public static void FillModelLayout(int zeroBasedLevel, List<ModelBlockSpec> blocks)
+public static void FillModelLayout(int zeroBasedLevel, List<ModelBlockSpec> blocks)
     {
         blocks.Clear();
 
-        // Levels 1-20 are individually hand-authored (see AuthoredCampaign). Levels 21-100 use a
-        // multi-family generator that keeps producing visibly different symmetric structures.
-        if (!BuildAuthoredLayout(zeroBasedLevel, blocks))
+        // The campaign is authored by the SOLDIER SMASH master design brief: 100 hand-specified
+        // military set pieces built from the full gameplay palette (box, box2, box3, long_box,
+        // long_box2, soldier, cannister, bomb, king) with exact per-level composition budgets and
+        // a 1 -> 5 table progression. The campaign builder (WarfestCampaign.cs) owns the full
+        // pipeline: build, compact stacks, and fit the whole battlefield inside the camera frame.
+        BuildCampaignLayout(zeroBasedLevel, blocks);
+    }
+
+private static void ApplyRequestedModelPalette(int zeroBasedLevel, List<ModelBlockSpec> blocks)
+    {
+        const int longBox2Variant = 0;
+        const int kingVariant = 1;
+        const int maxKingsPerLevel = 3;
+
+        // Rebuild every layout using long_box2 first, eliminating all legacy model variants.
+        for (int i = 0; i < blocks.Count; i++)
         {
-            BuildGeneratedLayout(zeroBasedLevel, blocks);
+            ModelBlockSpec spec = blocks[i];
+            spec.variant = longBox2Variant;
+            blocks[i] = spec;
         }
 
-        // Guarantee every structure fits the fixed-size pedestal table so the table renders at the
-        // same width, tilt and distance in every level regardless of how wide the design was authored.
-        NormalizeLayoutToTable(blocks);
+        // Every non-empty level gets at least one prominent king. The campaign introduces a
+        // second and third king gradually, but never exceeds the hard three-king limit.
+        int kingCount = Mathf.Clamp(1 + Mathf.Max(0, zeroBasedLevel) / 34, 1, maxKingsPerLevel);
+        for (int king = 0; king < kingCount; king++)
+        {
+            int bestIndex = -1;
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                ModelBlockSpec candidate = blocks[i];
+                if (candidate.variant != longBox2Variant) continue;
+
+                if (bestIndex < 0)
+                {
+                    bestIndex = i;
+                    continue;
+                }
+
+                ModelBlockSpec best = blocks[bestIndex];
+                bool higher = candidate.yOffset > best.yOffset + 0.0001f;
+                bool sameHeight = Mathf.Abs(candidate.yOffset - best.yOffset) <= 0.0001f;
+                bool closerToCenter = Mathf.Abs(candidate.x) < Mathf.Abs(best.x) - 0.0001f;
+                bool nearerLayer = candidate.depthLayer < best.depthLayer;
+                if (higher || (sameHeight && (closerToCenter || (Mathf.Abs(candidate.x - best.x) <= 0.0001f && nearerLayer))))
+                {
+                    bestIndex = i;
+                }
+            }
+
+            if (bestIndex < 0) break;
+            ModelBlockSpec kingSpec = blocks[bestIndex];
+            kingSpec.variant = kingVariant;
+            // The king is the level's key piece; render it at double the authored size.
+            kingSpec.width *= 2f;
+            kingSpec.height *= 2f;
+            blocks[bestIndex] = kingSpec;
+        }
+
+        // Apply the requested 4:1 long_box2 footprint only after king selection. This preserves
+        // kings at their full authored size while keeping each structural visual and collider aligned.
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            ModelBlockSpec spec = blocks[i];
+            if (spec.variant != longBox2Variant) continue;
+            spec.height = Mathf.Max(0.05f, spec.width * 0.25f);
+            blocks[i] = spec;
+        }
     }
+
+private static void CompactStacks(List<ModelBlockSpec> blocks)
+    {
+        if (blocks.Count == 0) return;
+
+        // Group upright pieces by column (x) and depth layer, then restack each column from its
+        // base so consecutive pieces touch exactly, using each piece's real height. Tilted or
+        // rotated layouts (diamonds, angled tables) are left untouched.
+        Dictionary<string, List<int>> columns = new Dictionary<string, List<int>>();
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            ModelBlockSpec s = blocks[i];
+            if (Mathf.Abs(s.rotation) > 0.01f) continue;
+            string key = Mathf.RoundToInt(s.x * 100f) + "|" + s.depthLayer + "|" + s.tableIndex;
+            if (!columns.TryGetValue(key, out List<int> list))
+            {
+                list = new List<int>();
+                columns[key] = list;
+            }
+            list.Add(i);
+        }
+
+        foreach (KeyValuePair<string, List<int>> column in columns)
+        {
+            List<int> indices = column.Value;
+            indices.Sort((a, b) => blocks[a].yOffset.CompareTo(blocks[b].yOffset));
+            float cursor = blocks[indices[0]].yOffset;
+            for (int j = 0; j < indices.Count; j++)
+            {
+                ModelBlockSpec s = blocks[indices[j]];
+                s.yOffset = cursor;
+                blocks[indices[j]] = s;
+                cursor += s.height;
+            }
+        }
+    }
+
+
 
     // Uniformly scales the whole structure down (never up) about its own centre until its widest
     // point fits within MaxStructureSpan. Scaling x, y, width and height by the same factor keeps
@@ -348,45 +444,10 @@ public static class WarfestLevelCatalog
     public static void FillModelTables(int zeroBasedLevel, List<ModelTableSpec> tables)
     {
         tables.Clear();
-
-        // Size the table to the exact footprint of whatever structure the level builds, so wide,
-        // asymmetric or tilted designs still rest fully on the surface.
-        List<ModelBlockSpec> layout = new List<ModelBlockSpec>();
-        FillModelLayout(zeroBasedLevel, layout);
-
-        float minX = float.MaxValue;
-        float maxX = float.MinValue;
-        float minZ = float.MaxValue;
-        float maxZ = float.MinValue;
-        const float halfDepth = 0.36f; // half-depth of a standard crate plane
-        for (int i = 0; i < layout.Count; i++)
-        {
-            ModelBlockSpec s = layout[i];
-            float rad = s.rotation * Mathf.Deg2Rad;
-            float halfWidth = 0.5f * (Mathf.Abs(s.width * Mathf.Cos(rad)) + Mathf.Abs(s.height * Mathf.Sin(rad)));
-            minX = Mathf.Min(minX, s.x - halfWidth);
-            maxX = Mathf.Max(maxX, s.x + halfWidth);
-
-            float layerZ = s.depthLayer == 0 ? FrontLayerZ : RearLayerZ;
-            minZ = Mathf.Min(minZ, layerZ - halfDepth);
-            maxZ = Mathf.Max(maxZ, layerZ + halfDepth);
-        }
-        if (layout.Count == 0)
-        {
-            minX = -1.5f; maxX = 1.5f;
-            minZ = FrontLayerZ - halfDepth; maxZ = RearLayerZ + halfDepth;
-        }
-
-        float center = (minX + maxX) * 0.5f;
-        // The layout was already normalized to fit MaxStructureSpan, so lock the table to the exact
-        // target width. This makes the pedestal render at an identical size, tilt and distance in
-        // every level (matching the reference framing) instead of growing with the structure.
-        float width = TargetTableWidth;
-        // Centre the table under the crate stack in depth so the blocks visibly rest ON the
-        // tabletop rather than floating in front of it (see CreateModelTable / CreateModelBox).
-        float depthCenter = (minZ + maxZ) * 0.5f;
-        // Raise the visible tabletop so the pedestal clears the pistol turret it used to overlap.
-        tables.Add(new ModelTableSpec(center, width, 0f, depthCenter));
+        // The campaign builder knows each level's table count, arrangement and per-table footprint,
+        // so it emits the pedestal specs directly (single centred table for levels 1-20, then two,
+        // three, four and finally five tables as the progression demands). See WarfestCampaign.cs.
+        BuildCampaignTables(zeroBasedLevel, tables);
     }
 
     // ==========================================================================================
@@ -532,16 +593,20 @@ public static class WarfestLevelCatalog
     // ---- levels 1-4 : exactly the requested shapes --------------------------------------------
 
     // Front 3x3 wall, an identical 3x3 wall directly behind it, and a soldier objective on top.
-    private static void Level01_FrontRearBlock(List<ModelBlockSpec> b)
+private static void Level01_FrontRearBlock(List<ModelBlockSpec> b)
     {
-        float[] xs = { -0.72f, 0f, 0.72f };
-        for (int c = 0; c < 3; c++)
-            for (int r = 0; r < 3; r++)
-            {
-                AddModel(b, xs[c], RowY(r), (r % 2 == 0) ? 1 : 0);              // front 3x3
-                AddModel(b, xs[c], RowY(r), (r % 2 == 0) ? 0 : 1, 0.72f, 0.72f, 1); // rear 3x3
-            }
-        Soldier(b, 0f, 3);
+        // Three broad long_box2 beams, with a mirrored rear layer, form the opening gauntlet.
+        // At 2.16 x 0.54 each beam retains the requested 4:1 long_box2 silhouette and gives
+        // the king a clear, important position above the structure.
+        const float beamWidth = 2.16f;
+        const float beamHeight = 0.54f;
+        for (int row = 0; row < 3; row++)
+        {
+            float y = row * ModelRowStep;
+            AddModel(b, 0f, y, 3, beamWidth, beamHeight, 0);
+            AddModel(b, 0f, y, 3, beamWidth, beamHeight, 1);
+        }
+        AddModel(b, 0f, 3f * ModelRowStep, 4, 0.72f, 0.72f);
     }
 
     // A pyramid of cannisters only: 6 across the bottom rising to a single one at the apex.
