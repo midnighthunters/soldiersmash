@@ -648,7 +648,7 @@ private void CreatePistol()
         pistolPivot = new GameObject("Pistol Pivot").transform;
         pistolPivot.SetParent(worldRoot, false);
         pistolPivot.localScale = new Vector3(1.7f, 1.7f, 1f);
-        pistolPivot.position = new Vector3(0f, -2.6f, -1f);
+        pistolPivot.position = new Vector3(0f, -3.5f, -1f);
 
         pistolVisual = CreateSprite(
             "Pistol",
@@ -694,7 +694,7 @@ private void CreateCannonBase()
         CreateSprite(
             "Pistol Base",
             pistolBaseSprite,
-            new Vector3(0f, -3.12f, -0.25f),
+            new Vector3(0f, -4.02f, -0.25f),
             new Vector2(0.46f, 0.46f),
             4);
     }
@@ -734,10 +734,20 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
         Touchscreen touchscreen = Touchscreen.current;
         if (touchscreen != null)
         {
-            screenPosition = touchscreen.primaryTouch.position.ReadValue();
-            held = touchscreen.primaryTouch.press.isPressed;
-            pressedThisFrame = touchscreen.primaryTouch.press.wasPressedThisFrame;
-            return true;
+            // A Touchscreen device can exist even on desktop/editor where the player is using a
+            // mouse (it simply never reports a press). Only take the touch branch when the touch
+            // is actually active, otherwise fall through to the mouse so clicks still fire.
+            var primaryTouch = touchscreen.primaryTouch;
+            bool touchActive = primaryTouch.press.isPressed
+                || primaryTouch.press.wasPressedThisFrame
+                || primaryTouch.press.wasReleasedThisFrame;
+            if (touchActive)
+            {
+                screenPosition = primaryTouch.position.ReadValue();
+                held = primaryTouch.press.isPressed;
+                pressedThisFrame = primaryTouch.press.wasPressedThisFrame;
+                return true;
+            }
         }
 
         Mouse mouse = Mouse.current;

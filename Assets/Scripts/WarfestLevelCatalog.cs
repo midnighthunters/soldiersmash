@@ -91,9 +91,10 @@ public static class WarfestLevelCatalog
     private const float MaxStructureSpan = TargetTableWidth - TableSpanMargin; // 3.6
 
     // World-space z of the two visual crate planes. Must stay in sync with CreateModelBox so the
-    // table can be centred under the stack in depth.
-    public const float FrontLayerZ = 0.08f;
-    public const float RearLayerZ = 0.72f;
+    // table can be centred under the stack in depth. Pushed back so the whole table+stack sits
+    // behind the pistol/turret instead of poking out in front of it.
+    public const float FrontLayerZ = 0.58f;
+    public const float RearLayerZ = 1.22f;
 
     public struct LevelDefinition
     {
@@ -384,7 +385,8 @@ public static class WarfestLevelCatalog
         // Centre the table under the crate stack in depth so the blocks visibly rest ON the
         // tabletop rather than floating in front of it (see CreateModelTable / CreateModelBox).
         float depthCenter = (minZ + maxZ) * 0.5f;
-        tables.Add(new ModelTableSpec(center, width, -0.351f, depthCenter));
+        // Raise the visible tabletop so the pedestal clears the pistol turret it used to overlap.
+        tables.Add(new ModelTableSpec(center, width, 0f, depthCenter));
     }
 
     // ==========================================================================================
