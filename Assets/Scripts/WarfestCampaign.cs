@@ -579,11 +579,14 @@ public static partial class WarfestLevelCatalog
             int i = centre[k % C];
             AddModel(b, cx[i], cursor[i], SOLDIER, 0.50f, 0.72f, 0, tableIndex); cursor[i] += 0.72f;
         }
-        // king at the central apex, sitting above everything else.
+        // king at the central apex, sitting above everything else. It is placed exactly on the
+        // table's symmetry axis (ox) so the mirror pass keeps it a single, centred royal piece
+        // instead of reflecting an off-centre king into a duplicate pair.
         if (king > 0)
         {
-            int mid = C / 2;
-            AddModel(b, cx[mid], cursor[mid], KING, 0.85f, 1.05f, 0, tableIndex); cursor[mid] += 1.05f;
+            float topY = 0f;
+            for (int i = 0; i < C; i++) topY = Mathf.Max(topY, cursor[i]);
+            AddModel(b, ox, topY, KING, 0.85f, 1.05f, 0, tableIndex);
         }
 
         // Beams: lintels bridging adjacent column tops, alternating long_box / long_box2 so the

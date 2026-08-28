@@ -1107,17 +1107,6 @@ private void BuildHud()
             TextAnchor.MiddleCenter, new Vector2(0.145f, 0.912f), new Vector2(0.19f, 0.078f), headingFont);
         AddTextOutline(ballsText, Color.white, new Vector2(1.2f, -1.2f));
 
-        CreateSpriteImage(safeAreaRoot, "Level Card", levelPanelSprite, Color.white,
-            new Vector2(0.515f, 0.912f), new Vector2(0.43f, 0.148f), false);
-        CreateText(safeAreaRoot, "Level Label", "LEVEL " + level.number.ToString("00"), 25, navy,
-            TextAnchor.MiddleCenter, new Vector2(0.515f, 0.951f), new Vector2(0.34f, 0.042f), headingFont);
-        CreateText(safeAreaRoot, "Target Caption", "TARGETS", 14, blue,
-            TextAnchor.MiddleLeft, new Vector2(0.455f, 0.909f), new Vector2(0.17f, 0.032f), bodyFont);
-        targetText = CreateText(safeAreaRoot, "Target Count", targetsRemaining.ToString("00"), 23, navy,
-            TextAnchor.MiddleCenter, new Vector2(0.615f, 0.909f), new Vector2(0.09f, 0.038f), headingFont);
-        CreateText(safeAreaRoot, "Level Subtitle", level.title.ToUpperInvariant(), 13, Ink,
-            TextAnchor.MiddleCenter, new Vector2(0.515f, 0.875f), new Vector2(0.34f, 0.028f), bodyFont);
-
         Button menu = CreateSpriteButton(safeAreaRoot, "Settings Menu", settingsPanelSprite,
             new Vector2(0.865f, 0.937f), new Vector2(0.18f, 0.092f));
         menu.onClick.AddListener(WarfestSession.ReturnToMenu);
