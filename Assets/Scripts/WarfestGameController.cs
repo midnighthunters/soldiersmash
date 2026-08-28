@@ -46,9 +46,19 @@ public sealed class WarfestGameController : MonoBehaviour
     private readonly List<float> modelTableTopYs = new List<float>();
     private readonly List<int> blockDepthLayers = new List<int>();
     private Sprite[] blockSprites;
+    private Sprite[] boosterSprites;
     private int ballCapacity;
     private int remainingBalls;
     private int targetsRemaining;
+
+    // Booster flow state. A shot-modifying booster (skull/spread/missile) is "armed" until the
+    // next shot consumes it; infinite balls is a level-long toggle applied the moment it is tapped.
+    private bool hasArmedBooster;
+    private WarfestBooster armedBooster;
+    private bool infiniteBallsActive;
+    private readonly Image[] boosterButtonImages = new Image[WarfestSession.BoosterCount];
+    private readonly Text[] boosterCountLabels = new Text[WarfestSession.BoosterCount];
+    private readonly GameObject[] boosterArmGlows = new GameObject[WarfestSession.BoosterCount];
 
 
     private bool isAiming;
@@ -119,6 +129,7 @@ private void LoadOriginalSprites()
             settingsPanelSprite = CreateSheetSprite(panelTexture, ScaleSheetRect(new Rect(930f, 0f, 410f, 404f), panelScaleX, panelScaleY), "Settings Button");
         }
         blockSprites = Resources.LoadAll<Sprite>("blocks");
+        boosterSprites = Resources.LoadAll<Sprite>("boosters");
 
         for (int i = 0; i < pistolSprites.Length; i++)
         {
@@ -778,9 +789,18 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
 
     private void Fire()
     {
-        if (remainingBalls <= 0 || levelEnded) return;
+        if (levelEnded) return;
 
-        remainingBalls--;
+        // Infinite balls skips the allowance entirely; otherwise a shot needs a ball to spend.
+        if (!infiniteBallsActive)
+        {
+            if (remainingBalls <= 0) return;
+            remainingBalls--;
+        }
+
+        bool boosted = hasArmedBooster;
+        WarfestBooster booster = armedBooster;
+
         recoilTime = 0.11f;
         RefreshHud();
         Vector2 launchPosition = muzzle.position;
@@ -790,9 +810,51 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
         // exact block so it lands where they aimed instead of stopping at whatever crate happens to
         // sit lower in the trajectory.
         WarfestTarget intendedTarget = hasAimPoint ? FindTargetAt(aimWorldPosition) : null;
-        CreateBall(launchPosition, launchDirection, intendedTarget);
 
-        if (remainingBalls <= 0 && targetsRemaining > 0) StartCoroutine(ShowFailureAfterDelay());
+        if (boosted && booster == WarfestBooster.SpreadShot)
+        {
+            FireSpread(launchPosition, launchDirection);
+        }
+        else if (boosted && booster == WarfestBooster.SkullShot)
+        {
+            // The skull ball must reach every block in its path, so it is never committed to a
+            // single tapped target.
+            CreateBall(launchPosition, launchDirection, null, WarfestBall.ShotMode.Piercing);
+        }
+        else if (boosted && booster == WarfestBooster.Missile)
+        {
+            CreateBall(launchPosition, launchDirection, intendedTarget, WarfestBall.ShotMode.Explosive);
+        }
+        else
+        {
+            CreateBall(launchPosition, launchDirection, intendedTarget);
+        }
+
+        if (boosted)
+        {
+            WarfestSession.ConsumeBooster(booster);
+            hasArmedBooster = false;
+            RefreshBoosterHud();
+        }
+
+        if (!infiniteBallsActive && remainingBalls <= 0 && targetsRemaining > 0)
+        {
+            StartCoroutine(ShowFailureAfterDelay());
+        }
+    }
+
+    // Spread booster: three balls launched in a fan around the aim direction. The whole fan counts
+    // as the single shot already spent by Fire().
+    private void FireSpread(Vector2 launchPosition, Vector2 launchDirection)
+    {
+        float baseAngle = Mathf.Atan2(launchDirection.y, launchDirection.x) * Mathf.Rad2Deg;
+        float[] offsets = { -13f, 0f, 13f };
+        for (int i = 0; i < offsets.Length; i++)
+        {
+            float radians = (baseAngle + offsets[i]) * Mathf.Deg2Rad;
+            Vector2 direction = new Vector2(Mathf.Cos(radians), Mathf.Sin(radians));
+            CreateBall(launchPosition, direction, null);
+        }
     }
 
     // Returns the front-most unbroken target whose collider contains the tapped world point, so a
@@ -816,9 +878,14 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
         return best;
     }
 
-    private void CreateBall(Vector2 position, Vector2 direction, WarfestTarget intendedTarget = null)
+    private void CreateBall(Vector2 position, Vector2 direction, WarfestTarget intendedTarget = null,
+        WarfestBall.ShotMode mode = WarfestBall.ShotMode.Normal)
     {
         GameObject ball = new GameObject("Shot Ball", typeof(CircleCollider2D), typeof(Rigidbody2D), typeof(WarfestBall));
+
+        // The skull ball is a heavier, larger wrecking ball so its plough-through reads clearly.
+        bool piercing = mode == WarfestBall.ShotMode.Piercing;
+        float radius = piercing ? ShotRadius * 1.55f : ShotRadius;
 
         int shotLayer = LayerMask.NameToLayer("WarfestShot");
         if (shotLayer >= 0) ball.layer = shotLayer;
@@ -831,9 +898,9 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
             visual.name = "3D Ball Visual";
             visual.transform.localPosition = Vector3.zero;
             visual.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
-            ApplyModelMaterial(visual, ballModelMaterial);
+            ApplyModelMaterial(visual, piercing ? GetSkullBallMaterial() : ballModelMaterial);
             Bounds sourceBounds = GetModelBounds(visual);
-            float diameter = ShotRadius * 2f;
+            float diameter = radius * 2f;
             float visualScale = diameter / Mathf.Max(sourceBounds.size.x, sourceBounds.size.y);
             visual.transform.localScale *= visualScale;
             Bounds fittedBounds = GetModelBounds(visual);
@@ -844,19 +911,20 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
         {
             GameObject fallbackVisual = new GameObject("Fallback Ball Visual", typeof(SpriteRenderer));
             fallbackVisual.transform.SetParent(ball.transform, false);
-            fallbackVisual.transform.localScale = Vector3.one * (ShotRadius * 2f);
+            fallbackVisual.transform.localScale = Vector3.one * (radius * 2f);
             SpriteRenderer renderer = fallbackVisual.GetComponent<SpriteRenderer>();
             renderer.sprite = GetCannonBaseSprite();
-            renderer.color = new Color(1f, 0.82f, 0.22f, 1f);
+            renderer.color = piercing ? new Color(0.12f, 0.14f, 0.2f, 1f) : new Color(1f, 0.82f, 0.22f, 1f);
             renderer.sortingOrder = 6;
         }
 
         CircleCollider2D collider = ball.GetComponent<CircleCollider2D>();
-        collider.radius = ShotRadius;
+        collider.radius = radius;
 
         // When the shot is committed to a specific tapped block, let it pass through every other
         // block so it strikes exactly what the player aimed at instead of the nearest crate in line.
-        if (intendedTarget != null)
+        // Piercing shots are never committed - they are meant to hit everything on the way through.
+        if (intendedTarget != null && !piercing)
         {
             Collider2D targetCollider = intendedTarget.GetComponent<Collider2D>();
             for (int i = 0; i < blocks.Count; i++)
@@ -872,13 +940,33 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
 
         Rigidbody2D body = ball.GetComponent<Rigidbody2D>();
         body.bodyType = RigidbodyType2D.Dynamic;
-        body.mass = 0.22f;
+        body.mass = piercing ? 0.6f : 0.22f;
         body.gravityScale = 0f;
         body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         body.interpolation = RigidbodyInterpolation2D.Interpolate;
         body.linearVelocity = direction.normalized * ShotSpeed;
         body.angularVelocity = -direction.normalized.x * 540f;
-        ball.GetComponent<WarfestBall>().Initialize(direction, 5.8f + level.difficulty * 0.5f, ShotLifetime);
+        float impact = (5.8f + level.difficulty * 0.5f) * (piercing ? 1.8f : 1f);
+        ball.GetComponent<WarfestBall>().Initialize(direction, impact, ShotLifetime, mode, this);
+    }
+
+    // Lazily-built dark material for the skull wrecking ball so it reads distinct from the standard
+    // projectile. Reuses the ball mesh's texture tinted down toward the skull-bomb art.
+    private Material skullBallMaterial;
+    private Material GetSkullBallMaterial()
+    {
+        if (skullBallMaterial != null) return skullBallMaterial;
+        skullBallMaterial = ballModelMaterial != null
+            ? new Material(ballModelMaterial)
+            : CreateBrightModelMaterial(Resources.Load<Texture2D>("ball/shaded"), "Warfest Skull Ball");
+        if (skullBallMaterial != null)
+        {
+            skullBallMaterial.name = "Warfest Skull Ball";
+            Color tint = new Color(0.22f, 0.24f, 0.32f, 1f);
+            if (skullBallMaterial.HasProperty("_BaseColor")) skullBallMaterial.SetColor("_BaseColor", tint);
+            if (skullBallMaterial.HasProperty("_Color")) skullBallMaterial.SetColor("_Color", tint);
+        }
+        return skullBallMaterial;
     }
 
     private IEnumerator ShowFailureAfterDelay()
@@ -940,14 +1028,30 @@ public void RegisterTargetBroken(WarfestTarget target)
         Vector2 center = bomb.transform.position;
         RegisterTargetBroken(bomb);
         CreateExplosionVfx(center);
+        ApplyBlast(center, 0.48f, bomb);
+    }
 
-        const float blastRadius = 0.48f;
+    // Missile booster impact: the striking shell breaks and damages everything in a slightly wider
+    // radius than a bomb. There is no source target to exclude, so the block it lands on is broken
+    // by the blast like any other neighbour.
+    public void ExplodeAt(Vector2 center)
+    {
+        if (levelEnded) return;
+
+        CreateExplosionVfx(center);
+        ApplyBlast(center, 0.62f, null);
+    }
+
+    // Shared radial blast used by both bombs and the missile booster: breaks unbroken targets in
+    // range and shoves every rigidbody outward with distance falloff.
+    private void ApplyBlast(Vector2 center, float blastRadius, WarfestTarget source)
+    {
         Collider2D[] hits = Physics2D.OverlapCircleAll(center, blastRadius);
         HashSet<Rigidbody2D> pushedBodies = new HashSet<Rigidbody2D>();
         for (int i = 0; i < hits.Length; i++)
         {
             WarfestTarget target = hits[i].GetComponent<WarfestTarget>();
-            if (target != null && target != bomb && !target.IsBroken)
+            if (target != null && target != source && !target.IsBroken)
             {
                 // A bomb caught in the blast chains into its own explosion; everything else just
                 // breaks. Each target flips its broken flag before recursing, so an already-spent
@@ -1110,11 +1214,123 @@ private void BuildHud()
         Button menu = CreateSpriteButton(safeAreaRoot, "Settings Menu", settingsPanelSprite,
             new Vector2(0.865f, 0.937f), new Vector2(0.18f, 0.092f));
         menu.onClick.AddListener(WarfestSession.ReturnToMenu);
+
+        BuildBoosterHud();
+    }
+
+    // Lays the four boosters out in the bottom corners, mirroring the reference art: infinite balls
+    // above the spread fan on the left, the skull shot above the missile on the right.
+    private void BuildBoosterHud()
+    {
+        Vector2 buttonSize = new Vector2(0.235f, 0.115f);
+        CreateBoosterButton(WarfestBooster.InfiniteBalls, new Vector2(0.135f, 0.205f), buttonSize);
+        CreateBoosterButton(WarfestBooster.SpreadShot, new Vector2(0.135f, 0.078f), buttonSize);
+        CreateBoosterButton(WarfestBooster.SkullShot, new Vector2(0.865f, 0.205f), buttonSize);
+        CreateBoosterButton(WarfestBooster.Missile, new Vector2(0.865f, 0.078f), buttonSize);
+        RefreshBoosterHud();
+    }
+
+    private void CreateBoosterButton(WarfestBooster booster, Vector2 center, Vector2 size)
+    {
+        int index = (int)booster;
+        Button button = CreateSpriteButton(safeAreaRoot, "Booster " + booster, GetBoosterSprite(booster), center, size);
+        boosterButtonImages[index] = button.GetComponent<Image>();
+
+        // A soft glow sits behind the icon and is switched on while the booster is armed/active.
+        Image glow = CreateSpriteImage(button.transform, "Arm Glow", GetCannonBaseSprite(),
+            new Color(1f, 0.92f, 0.35f, 0.6f), new Vector2(0.5f, 0.5f), new Vector2(1.18f, 1.18f), true);
+        glow.raycastTarget = false;
+        glow.transform.SetAsFirstSibling();
+        glow.gameObject.SetActive(false);
+        boosterArmGlows[index] = glow.gameObject;
+
+        // Green "+" badge at the bottom-right corner, matching the reference art. It doubles as the
+        // owned-count readout once the player holds a stock of the booster.
+        Image badge = CreateSpriteImage(button.transform, "Booster Badge", GetCannonBaseSprite(),
+            new Color(0.30f, 0.72f, 0.19f, 1f), new Vector2(0.82f, 0.12f), new Vector2(0.44f, 0.42f), true);
+        badge.raycastTarget = false;
+        Text badgeText = CreateText(badge.transform, "Booster Badge Label", "+", 19, Color.white,
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.52f), Vector2.one, headingFont);
+        badgeText.raycastTarget = false;
+        AddTextOutline(badgeText, new Color(0.10f, 0.30f, 0.08f, 1f), new Vector2(1f, -1f));
+        boosterCountLabels[index] = badgeText;
+
+        button.onClick.AddListener(() => OnBoosterClicked(booster));
+    }
+
+    private Sprite GetBoosterSprite(WarfestBooster booster)
+    {
+        if (boosterSprites == null || boosterSprites.Length == 0) return null;
+        string wanted = "boosters_" + (int)booster;
+        for (int i = 0; i < boosterSprites.Length; i++)
+        {
+            if (boosterSprites[i] != null && boosterSprites[i].name == wanted) return boosterSprites[i];
+        }
+        int index = (int)booster;
+        return index >= 0 && index < boosterSprites.Length ? boosterSprites[index] : null;
     }
 
 private void RefreshHud()
     {
-        if (ballsText != null) ballsText.text = remainingBalls.ToString("00");
+        if (ballsText != null) ballsText.text = infiniteBallsActive ? "\u221E" : remainingBalls.ToString("00");
+    }
+
+    // Repaints every booster button: dims the ones the player is out of, shows the owned count (or
+    // a "+" prompt when empty) on the badge, and lights the glow on whichever booster is active.
+    private void RefreshBoosterHud()
+    {
+        for (int i = 0; i < WarfestSession.BoosterCount; i++)
+        {
+            WarfestBooster booster = (WarfestBooster)i;
+            int count = WarfestSession.GetBoosterCount(booster);
+            bool owned = count > 0;
+            bool armed = (hasArmedBooster && (int)armedBooster == i)
+                || (booster == WarfestBooster.InfiniteBalls && infiniteBallsActive);
+
+            if (boosterButtonImages[i] != null)
+            {
+                boosterButtonImages[i].color = owned ? Color.white : new Color(1f, 1f, 1f, 0.45f);
+            }
+            if (boosterCountLabels[i] != null)
+            {
+                boosterCountLabels[i].text = owned ? count.ToString() : "+";
+            }
+            if (boosterArmGlows[i] != null)
+            {
+                boosterArmGlows[i].SetActive(armed);
+            }
+        }
+    }
+
+    // Handles a tap on a booster: infinite balls applies immediately, the shot boosters arm the
+    // next shot (tapping the armed one again cancels it). Empty boosters are inert.
+    private void OnBoosterClicked(WarfestBooster booster)
+    {
+        if (levelEnded) return;
+        if (WarfestSession.GetBoosterCount(booster) <= 0) return;
+
+        if (booster == WarfestBooster.InfiniteBalls)
+        {
+            if (infiniteBallsActive) return;
+            if (WarfestSession.ConsumeBooster(booster))
+            {
+                infiniteBallsActive = true;
+                RefreshHud();
+            }
+            RefreshBoosterHud();
+            return;
+        }
+
+        if (hasArmedBooster && armedBooster == booster)
+        {
+            hasArmedBooster = false; // second tap disarms
+        }
+        else
+        {
+            hasArmedBooster = true;
+            armedBooster = booster;
+        }
+        RefreshBoosterHud();
     }
 
 private void ShowFailure()

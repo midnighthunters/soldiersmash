@@ -1,15 +1,31 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+// The four combat boosters shown in the bottom corners of the gameplay HUD. The integer values
+// map directly onto the sliced sprite names in Resources/boosters.png (boosters_0..boosters_3).
+public enum WarfestBooster
+{
+    InfiniteBalls = 0, // boosters_0 - unlimited balls for the rest of the level
+    SkullShot = 1,     // boosters_1 - a heavy skull ball that smashes through everything
+    SpreadShot = 2,    // boosters_2 - fires a three-ball fan
+    Missile = 3,       // boosters_3 - an explosive shell that detonates on impact
+}
+
 public static class WarfestSession
 {
     public const int LevelCount = 100;
     public const int DefaultBalls = 20;
     public const int LevelOneBalls = 60;
     public const int MaxLives = 5;
+    public const int BoosterCount = 4;
+
+    // Every booster starts the campaign with a small free stock so the flow is playable out of
+    // the box. A store / rewarded-ad hook would top these up in a shipping build.
+    private const int DefaultBoosterStock = 3;
     private const string SelectedLevelKey = "Warfest.SelectedLevel";
     private const string LivesKey = "Warfest.Lives";
     private const string CampaignCompleteKey = "Warfest.CampaignComplete";
+    private const string BoosterCountKeyPrefix = "Warfest.Booster.";
     private static int selectedLevel = -1;
 
     // True once the player has cleared the final level. The menu uses this to swap the
@@ -29,6 +45,34 @@ public static class WarfestSession
     public static bool LivesFull
     {
         get { return Lives >= MaxLives; }
+    }
+
+    // How many uses of a booster the player currently owns. Persisted per booster so a stock
+    // spent on one level carries over to the next, mirroring the Lives persistence pattern.
+    public static int GetBoosterCount(WarfestBooster booster)
+    {
+        return Mathf.Max(0, PlayerPrefs.GetInt(BoosterCountKeyPrefix + (int)booster, DefaultBoosterStock));
+    }
+
+    private static void SetBoosterCount(WarfestBooster booster, int count)
+    {
+        PlayerPrefs.SetInt(BoosterCountKeyPrefix + (int)booster, Mathf.Max(0, count));
+        PlayerPrefs.Save();
+    }
+
+    // Spends a single use. Returns false (and changes nothing) when the player owns none.
+    public static bool ConsumeBooster(WarfestBooster booster)
+    {
+        int count = GetBoosterCount(booster);
+        if (count <= 0) return false;
+        SetBoosterCount(booster, count - 1);
+        return true;
+    }
+
+    // Adds uses to a booster - the entry point a shop or rewarded-ad reward would call.
+    public static void GrantBooster(WarfestBooster booster, int amount = 1)
+    {
+        SetBoosterCount(booster, GetBoosterCount(booster) + Mathf.Max(1, amount));
     }
 
     public static int SelectedLevel
