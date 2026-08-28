@@ -91,7 +91,7 @@ private void Start()
 
 private void LoadOriginalSprites()
     {
-        Sprite[] pistolSprites = Resources.LoadAll<Sprite>("pistol");
+        Sprite[] pistolSprites = Resources.LoadAll<Sprite>("new_gun");
         Sprite[] tables = Resources.LoadAll<Sprite>("table");
 
         Texture2D backgroundTexture = Resources.Load<Texture2D>("background");
@@ -122,8 +122,8 @@ private void LoadOriginalSprites()
 
         for (int i = 0; i < pistolSprites.Length; i++)
         {
-            if (pistolSprites[i].name == "pistol_0") pistolSprite = pistolSprites[i];
-            if (pistolSprites[i].name == "pistol_1") pistolBaseSprite = pistolSprites[i];
+            if (pistolSprites[i].name == "gun") pistolSprite = pistolSprites[i];
+            if (pistolSprites[i].name == "base") pistolBaseSprite = pistolSprites[i];
         }
         if (pistolSprite == null && pistolSprites.Length > 0) pistolSprite = pistolSprites[0];
         if (pistolBaseSprite == null && pistolSprites.Length > 1) pistolBaseSprite = pistolSprites[1];
@@ -647,7 +647,8 @@ private void CreatePistol()
         CreateCannonBase();
         pistolPivot = new GameObject("Pistol Pivot").transform;
         pistolPivot.SetParent(worldRoot, false);
-        pistolPivot.position = new Vector3(0f, -3.68f, -1f);
+        pistolPivot.localScale = new Vector3(1.7f, 1.7f, 1f);
+        pistolPivot.position = new Vector3(0f, -2.6f, -1f);
 
         pistolVisual = CreateSprite(
             "Pistol",
@@ -660,7 +661,7 @@ private void CreatePistol()
 
         muzzle = new GameObject("Muzzle").transform;
         muzzle.SetParent(pistolPivot, false);
-        muzzle.localPosition = new Vector3(0f, 1.14f, 0f);
+        muzzle.localPosition = new Vector3(0f, 1.45f, 0f);
 
         CreateAimLine();
     }
@@ -693,8 +694,8 @@ private void CreateCannonBase()
         CreateSprite(
             "Pistol Base",
             pistolBaseSprite,
-            new Vector3(0f, -4.06f, -0.25f),
-            new Vector2(0.27f, 0.27f),
+            new Vector3(0f, -3.12f, -0.25f),
+            new Vector2(0.46f, 0.46f),
             4);
     }
 

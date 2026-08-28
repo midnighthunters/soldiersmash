@@ -80,6 +80,16 @@ public static class WarfestLevelCatalog
     public const float ModelColPitch = 0.72f;
     public const float ModelRowStep = 0.72f;
 
+    // Every model level renders its pedestal table at this exact world width so the table always
+    // appears at the same size, tilt and camera distance (see CreateModelTable, which scales the
+    // table model uniformly to this width). The reference framing has clear sand margins on both
+    // sides of the table; a value of 4.8 reproduces it. TableSpanMargin is the breathing room kept
+    // between the structure footprint and the table edge, so MaxStructureSpan is the widest a
+    // structure may be before it is scaled down to sit fully on the fixed-size table.
+    public const float TargetTableWidth = 4.8f;
+    private const float TableSpanMargin = 1.2f;
+    private const float MaxStructureSpan = TargetTableWidth - TableSpanMargin; // 3.6
+
     // World-space z of the two visual crate planes. Must stay in sync with CreateModelBox so the
     // table can be centred under the stack in depth.
     public const float FrontLayerZ = 0.08f;
@@ -289,8 +299,49 @@ public static class WarfestLevelCatalog
 
         // Levels 1-20 are individually hand-authored (see AuthoredCampaign). Levels 21-100 use a
         // multi-family generator that keeps producing visibly different symmetric structures.
-        if (BuildAuthoredLayout(zeroBasedLevel, blocks)) return;
-        BuildGeneratedLayout(zeroBasedLevel, blocks);
+        if (!BuildAuthoredLayout(zeroBasedLevel, blocks))
+        {
+            BuildGeneratedLayout(zeroBasedLevel, blocks);
+        }
+
+        // Guarantee every structure fits the fixed-size pedestal table so the table renders at the
+        // same width, tilt and distance in every level regardless of how wide the design was authored.
+        NormalizeLayoutToTable(blocks);
+    }
+
+    // Uniformly scales the whole structure down (never up) about its own centre until its widest
+    // point fits within MaxStructureSpan. Scaling x, y, width and height by the same factor keeps
+    // every crate square and every tilt angle intact, so a wide design simply becomes a smaller,
+    // proportional copy that rests fully on the standard table instead of forcing an oversized one.
+    private static void NormalizeLayoutToTable(List<ModelBlockSpec> blocks)
+    {
+        if (blocks.Count == 0) return;
+
+        float minX = float.MaxValue;
+        float maxX = float.MinValue;
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            ModelBlockSpec s = blocks[i];
+            float rad = s.rotation * Mathf.Deg2Rad;
+            float halfWidth = 0.5f * (Mathf.Abs(s.width * Mathf.Cos(rad)) + Mathf.Abs(s.height * Mathf.Sin(rad)));
+            minX = Mathf.Min(minX, s.x - halfWidth);
+            maxX = Mathf.Max(maxX, s.x + halfWidth);
+        }
+
+        float span = maxX - minX;
+        if (span <= MaxStructureSpan || span <= 0.0001f) return;
+
+        float scale = MaxStructureSpan / span;
+        float centerX = (minX + maxX) * 0.5f;
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            ModelBlockSpec s = blocks[i];
+            s.x = centerX + (s.x - centerX) * scale;
+            s.yOffset *= scale;   // yOffset is the height above the tabletop, so vertical stacking shrinks too
+            s.width *= scale;
+            s.height *= scale;
+            blocks[i] = s;
+        }
     }
 
     public static void FillModelTables(int zeroBasedLevel, List<ModelTableSpec> tables)
@@ -326,7 +377,10 @@ public static class WarfestLevelCatalog
         }
 
         float center = (minX + maxX) * 0.5f;
-        float width = (maxX - minX) + 1.2f;
+        // The layout was already normalized to fit MaxStructureSpan, so lock the table to the exact
+        // target width. This makes the pedestal render at an identical size, tilt and distance in
+        // every level (matching the reference framing) instead of growing with the structure.
+        float width = TargetTableWidth;
         // Centre the table under the crate stack in depth so the blocks visibly rest ON the
         // tabletop rather than floating in front of it (see CreateModelTable / CreateModelBox).
         float depthCenter = (minZ + maxZ) * 0.5f;

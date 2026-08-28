@@ -265,18 +265,30 @@ public sealed class WarfestMainMenu : MonoBehaviour
 
         Button deploy = CreateSheetButton(card, "Deploy Mission", new Rect(443f, 560f, 410f, 174f),
             new Vector2(0.5f, 0.535f), new Vector2(0.84f, 0.5f));
-        deploy.onClick.AddListener(() => WarfestSession.LoadLevel(WarfestSession.SelectedLevel));
 
-        // Difficulty rides on its own recessed chip across the top of the green plate; the
-        // level number then reads large and centered underneath it, matching the reference.
-        string difficulty = level.difficulty <= 2 ? "EASY" : level.difficulty <= 4 ? "HARD" : "ELITE";
-        Image difficultyChip = CreateSheetImage(deploy.transform, "Difficulty Chip", new Rect(868f, 712f, 185f, 58f),
-            new Vector2(0.5f, 0.865f), new Vector2(0.62f, 0.24f));
-        difficultyChip.color = new Color(0.56f, 0.61f, 0.5f, 1f);
-        CreateOutlinedText(deploy.transform, "Difficulty", difficulty, 18, new Color(0.87f, 0.93f, 0.79f, 1f),
-            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.865f), new Vector2(0.5f, 0.16f), bodyFont, DeepGreen, 1.2f);
-        CreateOutlinedText(deploy.transform, "Level Number", "LEVEL " + level.number.ToString("00"), 48, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.4f), new Vector2(0.9f, 0.46f), headingFont, DeepGreen, 2.3f);
+        if (WarfestSession.CampaignComplete)
+        {
+            // Every authored level is cleared. The card stays visible for continuity but the
+            // button is inert and simply teases the next batch of missions.
+            deploy.interactable = false;
+            CreateOutlinedText(deploy.transform, "Level Number", "COMING SOON", 34, Cream,
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.95f, 0.5f), headingFont, DeepGreen, 2.3f);
+        }
+        else
+        {
+            deploy.onClick.AddListener(() => WarfestSession.LoadLevel(WarfestSession.SelectedLevel));
+
+            // Difficulty rides on its own recessed chip across the top of the green plate; the
+            // level number then reads large and centered underneath it, matching the reference.
+            string difficulty = level.difficulty <= 2 ? "EASY" : level.difficulty <= 4 ? "HARD" : "ELITE";
+            Image difficultyChip = CreateSheetImage(deploy.transform, "Difficulty Chip", new Rect(868f, 712f, 185f, 58f),
+                new Vector2(0.5f, 0.865f), new Vector2(0.62f, 0.24f));
+            difficultyChip.color = new Color(0.56f, 0.61f, 0.5f, 1f);
+            CreateOutlinedText(deploy.transform, "Difficulty", difficulty, 18, new Color(0.87f, 0.93f, 0.79f, 1f),
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.865f), new Vector2(0.5f, 0.16f), bodyFont, DeepGreen, 1.2f);
+            CreateOutlinedText(deploy.transform, "Level Number", "LEVEL " + level.number.ToString("00"), 48, Cream,
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.4f), new Vector2(0.9f, 0.46f), headingFont, DeepGreen, 2.3f);
+        }
 
         // Bottom reward strip: shells overlap the left cap of a centered star-progress bar,
         // with a star medal and its bonus payout overlapping the right cap.
