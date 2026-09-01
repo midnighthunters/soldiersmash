@@ -28,11 +28,18 @@ public sealed class WarfestMainMenu : MonoBehaviour
     private Rect appliedSafeArea;
     private Canvas menuCanvas;
     private GameObject createdEventSystem;
+    private Text lifeCountText;
+    private Text lifeStatusText;
+    private Button deployButton;
+    private int displayedLives = -1;
+    private int displayedLifeSeconds = -1;
+    private float nextLifeHudRefreshTime;
 
     private void OnEnable()
     {
         if (Application.isPlaying)
         {
+            Application.targetFrameRate = 60;
             Rebuild();
             return;
         }
@@ -86,6 +93,11 @@ public sealed class WarfestMainMenu : MonoBehaviour
     {
         ApplyCanvasScale();
         ApplySafeArea();
+        if (Application.isPlaying && Time.unscaledTime >= nextLifeHudRefreshTime)
+        {
+            nextLifeHudRefreshTime = Time.unscaledTime + 1f;
+            RefreshLifeHud();
+        }
     }
 
     private void Rebuild()
@@ -133,6 +145,11 @@ public sealed class WarfestMainMenu : MonoBehaviour
         menuCanvas = null;
         safeAreaRoot = null;
         canvasScaler = null;
+        lifeCountText = null;
+        lifeStatusText = null;
+        deployButton = null;
+        displayedLives = -1;
+        displayedLifeSeconds = -1;
         appliedReferenceResolution = Vector2.zero;
         appliedSafeArea = new Rect();
 
@@ -225,9 +242,9 @@ public sealed class WarfestMainMenu : MonoBehaviour
         int lives = WarfestSession.Lives;
         CreateSheetImage(safeAreaRoot, "Lives Bar", new Rect(775f, 43f, 276f, 119f),
             new Vector2(0.715f, 0.92f), new Vector2(0.27f, 0.071f));
-        CreateOutlinedText(safeAreaRoot, "Life Count", lives.ToString(), 25, Cream,
+        lifeCountText = CreateOutlinedText(safeAreaRoot, "Life Count", lives.ToString(), 25, Cream,
             TextAnchor.MiddleCenter, new Vector2(0.665f, 0.922f), new Vector2(0.07f, 0.046f), headingFont, Navy, 1.5f);
-        CreateText(safeAreaRoot, "Life Status", WarfestSession.LivesFull ? "FULL" : "READY", 18, DeepGreen,
+        lifeStatusText = CreateText(safeAreaRoot, "Life Status", WarfestSession.LivesFull ? "FULL" : WarfestSession.LifeTimerText, 18, DeepGreen,
             TextAnchor.MiddleCenter, new Vector2(0.79f, 0.92f), new Vector2(0.13f, 0.04f), bodyFont);
 
         CreateSheetImage(safeAreaRoot, "Settings", new Rect(1144f, 46f, 100f, 108f),
@@ -260,11 +277,12 @@ public sealed class WarfestMainMenu : MonoBehaviour
         progress.fillAmount = Mathf.Clamp01((float)level.number / WarfestSession.LevelCount);
         CreateOutlinedText(card, "Campaign Progress", level.number + "/" + WarfestSession.LevelCount, 21, Cream,
             TextAnchor.MiddleCenter, new Vector2(0.49f, 0.91f), new Vector2(0.25f, 0.09f), bodyFont, Navy, 1.4f);
-        CreateSheetImage(card, "Reward Chest", new Rect(1065f, 775f, 132f, 107f),
+        CreateSheetImage(card, "Reward Chest", new Rect(1055f, 748f, 145f, 132f),
             new Vector2(0.86f, 0.905f), new Vector2(0.19f, 0.24f));
 
         Button deploy = CreateSheetButton(card, "Deploy Mission", new Rect(443f, 560f, 410f, 174f),
             new Vector2(0.5f, 0.535f), new Vector2(0.84f, 0.5f));
+        deployButton = deploy;
 
         if (WarfestSession.CampaignComplete)
         {
@@ -276,6 +294,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
         }
         else
         {
+            deploy.interactable = WarfestSession.Lives > 0;
             deploy.onClick.AddListener(() => WarfestSession.LoadLevel(WarfestSession.SelectedLevel));
 
             // Difficulty rides on its own recessed chip across the top of the green plate; the
@@ -290,24 +309,24 @@ public sealed class WarfestMainMenu : MonoBehaviour
                 TextAnchor.MiddleCenter, new Vector2(0.5f, 0.4f), new Vector2(0.9f, 0.46f), headingFont, DeepGreen, 2.3f);
         }
 
-        // Bottom reward strip: shells overlap the left cap of a centered star-progress bar,
-        // with a star medal and its bonus payout overlapping the right cap.
-        CreateSheetImage(card, "Reward Track", new Rect(458f, 763f, 365f, 82f),
-            new Vector2(0.5f, 0.095f), new Vector2(0.64f, 0.13f));
-        Image rewardFill = CreateSheetImage(card, "Reward Fill", new Rect(216f, 866f, 550f, 60f),
-            new Vector2(0.5f, 0.095f), new Vector2(0.58f, 0.058f));
-        rewardFill.type = Image.Type.Filled;
-        rewardFill.fillMethod = Image.FillMethod.Horizontal;
-        rewardFill.fillOrigin = 0;
-        rewardFill.fillAmount = 1f;
-        CreateOutlinedText(card, "Reward Count", "3/3", 19, Navy, TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 0.095f), new Vector2(0.4f, 0.1f), bodyFont, Color.white, 1.1f);
-        CreateSheetImage(card, "Shells", new Rect(24f, 837f, 120f, 125f),
-            new Vector2(0.14f, 0.11f), new Vector2(0.16f, 0.24f));
-        CreateSheetImage(card, "Star Medal", new Rect(814f, 830f, 256f, 140f),
-            new Vector2(0.87f, 0.12f), new Vector2(0.2f, 0.26f));
-        CreateOutlinedText(card, "Star Bonus", "+2", 15, Cream, TextAnchor.MiddleCenter,
-            new Vector2(0.93f, 0.045f), new Vector2(0.12f, 0.08f), bodyFont, Navy, 1f);
+    }
+
+    private void RefreshLifeHud()
+    {
+        if (lifeCountText == null || lifeStatusText == null) return;
+
+        int lives = WarfestSession.Lives;
+        int seconds = WarfestSession.SecondsUntilNextLife;
+        if (lives == displayedLives && seconds == displayedLifeSeconds) return;
+
+        displayedLives = lives;
+        displayedLifeSeconds = seconds;
+        lifeCountText.text = lives.ToString();
+        lifeStatusText.text = lives >= WarfestSession.MaxLives ? "FULL" : WarfestSession.LifeTimerText;
+        if (deployButton != null && !WarfestSession.CampaignComplete)
+        {
+            deployButton.interactable = lives > 0;
+        }
     }
 
     private void BuildBottomNavigation()

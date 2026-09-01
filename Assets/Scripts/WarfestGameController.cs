@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -13,6 +14,12 @@ public sealed class WarfestGameController : MonoBehaviour
     private static readonly Color LightPanel = new Color(1f, 1f, 1f, 0.95f);
 
     private readonly List<GameObject> blocks = new List<GameObject>();
+    private readonly List<Rigidbody2D> blockBodies = new List<Rigidbody2D>();
+    private readonly List<Collider2D> blockColliders = new List<Collider2D>();
+    private readonly List<WarfestTarget> blockTargets = new List<WarfestTarget>();
+    private readonly Collider2D[] targetOverlapResults = new Collider2D[16];
+    private readonly Collider2D[] blastOverlapResults = new Collider2D[64];
+    private readonly HashSet<Rigidbody2D> pushedBodies = new HashSet<Rigidbody2D>();
     [SerializeField] private Font headingFont;
     [SerializeField] private Font bodyFont;
     private Font font;
@@ -32,6 +39,11 @@ public sealed class WarfestGameController : MonoBehaviour
     private Sprite levelPanelSprite;
     private Sprite blueLabelSprite;
     private Sprite settingsPanelSprite;
+    private Sprite leaveIconSprite;
+    private Sprite soundIconSprite;
+    private Sprite musicIconSprite;
+    private Sprite settingsEnabledSprite;
+    private Sprite settingsDisabledSprite;
     private Sprite explosionSprite;
     private Material explosionParticleMaterial;
     private Sprite tableSprite;
@@ -44,21 +56,32 @@ public sealed class WarfestGameController : MonoBehaviour
     private GameObject ballModelPrefab;
     private Material ballModelMaterial;
     private readonly List<float> modelTableTopYs = new List<float>();
+    private readonly List<float> modelTableCenterXs = new List<float>();
     private readonly List<int> blockDepthLayers = new List<int>();
     private Sprite[] blockSprites;
     private Sprite[] boosterSprites;
     private int ballCapacity;
     private int remainingBalls;
     private int targetsRemaining;
+    private int activeBalls;
+    private bool checkFallenTargets;
+    private float nextFallenTargetCheckTime;
 
     // Booster flow state. A shot-modifying booster (skull/spread/missile) is "armed" until the
-    // next shot consumes it; infinite balls is a level-long toggle applied the moment it is tapped.
+    // next shot consumes it; infinite balls is a short timed effect applied the moment it is tapped.
     private bool hasArmedBooster;
     private WarfestBooster armedBooster;
     private bool infiniteBallsActive;
+    private bool infiniteBallsWaitingForFirstShot;
+    private float infiniteBallsTimeRemaining;
+    private readonly Button[] boosterButtons = new Button[WarfestSession.BoosterCount];
     private readonly Image[] boosterButtonImages = new Image[WarfestSession.BoosterCount];
     private readonly Text[] boosterCountLabels = new Text[WarfestSession.BoosterCount];
     private readonly GameObject[] boosterArmGlows = new GameObject[WarfestSession.BoosterCount];
+    private GameObject boosterStatusPanel;
+    private Text boosterStatusText;
+    private GameObject boosterProgressTrack;
+    private Image boosterProgressFill;
 
 
     private bool isAiming;
@@ -74,6 +97,24 @@ public sealed class WarfestGameController : MonoBehaviour
     private CanvasScaler hudScaler;
     private Vector2 appliedReferenceResolution;
     private Rect appliedSafeArea;
+    private GameObject settingsFlyout;
+    private GameObject leaveConfirmation;
+    private Image soundButtonBackground;
+    private Image musicButtonBackground;
+    private Text failureLifeStatus;
+    private Button retryButton;
+    private bool settingsOpen;
+    private bool soundEnabled;
+    private bool musicEnabled;
+    private int displayedFailureLives = -1;
+    private int displayedFailureSeconds = -1;
+    private float nextLifeStatusRefreshTime;
+    private AudioSource sfxSource;
+    private AudioSource musicSource;
+    private AudioClip shootClip;
+    private AudioClip blockPopClip;
+    private AudioClip musicClip;
+    private float lastBlockPopTime = -1f;
 
     private const float TableColliderWidth = 16.10f;
     private const float TableColliderHeight = 0.52f;
@@ -81,22 +122,40 @@ public sealed class WarfestGameController : MonoBehaviour
     private const float ShotRadius = 0.16f;
     private const float ShotSpeed = 17f;
     private const float ShotLifetime = 4f;
+    private const float BlockSizeMultiplier = 1.20f;
+    private const float CannonVerticalOffsetPixels = 30f;
+    private const float FallenTargetCheckInterval = 0.10f;
+    private const float BoosterUiUpdateInterval = 0.05f;
+    private const float InfiniteBallsDurationSeconds = 3f;
+    private const string SoundEnabledKey = "Warfest.SoundEnabled";
+    private const string MusicEnabledKey = "Warfest.MusicEnabled";
+    private const int AudioSampleRate = 22050;
     private float recoilTime;
+    private float nextBoosterUiUpdateTime;
+    private int aimCollisionMask = ~0;
 
 private void Start()
     {
+        // Unity defaults to 30 FPS on many mobile targets when no explicit frame rate is set.
+        // The game is lightweight enough to target a visibly smoother 60 FPS.
+        Application.targetFrameRate = 60;
         font = bodyFont != null ? bodyFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         if (headingFont == null) headingFont = font;
         if (bodyFont == null) bodyFont = font;
+        soundEnabled = PlayerPrefs.GetInt(SoundEnabledKey, 1) == 1;
+        musicEnabled = PlayerPrefs.GetInt(MusicEnabledKey, 1) == 1;
         LoadOriginalSprites();
         EnsureEventSystem();
         EnsureCamera();
+        CachePhysicsLayers();
         level = WarfestLevelCatalog.Get(WarfestSession.SelectedLevel);
         ballCapacity = WarfestSession.GetBallAllowance(level.number - 1);
         remainingBalls = ballCapacity;
         BuildWorld();
         BuildHud();
+        BuildAudio();
         RefreshHud();
+        ApplyAudioPreferences();
     }
 
 private void LoadOriginalSprites()
@@ -127,6 +186,32 @@ private void LoadOriginalSprites()
             levelPanelSprite = CreateSheetSprite(panelTexture, ScaleSheetRect(new Rect(571f, 423f, 931f, 471f), panelScaleX, panelScaleY), "Level Panel");
             blueLabelSprite = CreateSheetSprite(panelTexture, ScaleSheetRect(new Rect(222f, 95f, 494f, 201f), panelScaleX, panelScaleY), "Blue Label");
             settingsPanelSprite = CreateSheetSprite(panelTexture, ScaleSheetRect(new Rect(930f, 0f, 410f, 404f), panelScaleX, panelScaleY), "Settings Button");
+        }
+
+        Texture2D settingsIcons = Resources.Load<Texture2D>("settings_icons");
+        if (settingsIcons != null)
+        {
+            float iconScaleX = settingsIcons.width / 1536f;
+            float iconScaleY = settingsIcons.height / 1024f;
+            leaveIconSprite = CreateSheetSprite(settingsIcons,
+                ScaleSheetRect(new Rect(0f, 512f, 768f, 512f), iconScaleX, iconScaleY), "Leave Icon");
+            soundIconSprite = CreateSheetSprite(settingsIcons,
+                ScaleSheetRect(new Rect(768f, 512f, 768f, 512f), iconScaleX, iconScaleY), "Sound Icon");
+            musicIconSprite = CreateSheetSprite(settingsIcons,
+                ScaleSheetRect(new Rect(0f, 0f, 768f, 512f), iconScaleX, iconScaleY), "Music Icon");
+            // The fourth cell is the settings gear. The main HUD already supplies its own settings
+            // button art, so that cell is deliberately not created or used here.
+        }
+
+        Texture2D settingsBackground = Resources.Load<Texture2D>("settings_background");
+        if (settingsBackground != null)
+        {
+            float backgroundScaleX = settingsBackground.width / 500f;
+            float backgroundScaleY = settingsBackground.height / 295f;
+            settingsDisabledSprite = CreateSheetSprite(settingsBackground,
+                ScaleSheetRect(new Rect(0f, 0f, 250f, 295f), backgroundScaleX, backgroundScaleY), "Settings Disabled");
+            settingsEnabledSprite = CreateSheetSprite(settingsBackground,
+                ScaleSheetRect(new Rect(250f, 0f, 250f, 295f), backgroundScaleX, backgroundScaleY), "Settings Enabled");
         }
         blockSprites = Resources.LoadAll<Sprite>("blocks");
         boosterSprites = Resources.LoadAll<Sprite>("boosters");
@@ -273,18 +358,37 @@ private static float GetModelMass(int variant)
         Renderer[] renderers = model.GetComponentsInChildren<Renderer>();
         for (int i = 0; i < renderers.Length; i++)
         {
-            renderers[i].sharedMaterial = material;
+            Renderer renderer = renderers[i];
+            renderer.sharedMaterial = material;
+            // Gameplay models use an unlit material, so lighting probes, shadows and motion
+            // vectors only add render work without changing the final image.
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.lightProbeUsage = LightProbeUsage.Off;
+            renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
         }
     }
 
 
-private void Update()
+    private void Update()
     {
         ApplyCanvasScale();
         ApplySafeArea();
         UpdateRecoil();
+        UpdateInfiniteBallsTimer();
+        if (failureLifeStatus != null && Time.unscaledTime >= nextLifeStatusRefreshTime)
+        {
+            nextLifeStatusRefreshTime = Time.unscaledTime + 1f;
+            RefreshFailureLifeStatus();
+        }
+        if (checkFallenTargets && Time.time >= nextFallenTargetCheckTime)
+        {
+            nextFallenTargetCheckTime = Time.time + FallenTargetCheckInterval;
+            CheckFallenTargets();
+        }
 
-        if (levelEnded || gameplayCamera == null || muzzle == null) return;
+        if (levelEnded || settingsOpen || gameplayCamera == null || muzzle == null) return;
 
         // A shot must begin with a new press inside this gameplay scene. This prevents the
         // release of the menu-selection click/tap from becoming an unintended first shot.
@@ -351,14 +455,8 @@ private void Update()
         }
         dir.Normalize();
 
-        int mask = ~0;
-        int tableLayer = LayerMask.NameToLayer("WarfestTable");
-        int shotLayer = LayerMask.NameToLayer("WarfestShot");
-        if (tableLayer >= 0) mask &= ~(1 << tableLayer);
-        if (shotLayer >= 0) mask &= ~(1 << shotLayer);
-
         const float maxLength = 14f;
-        RaycastHit2D hit = Physics2D.Raycast(origin, dir, maxLength, mask);
+        RaycastHit2D hit = Physics2D.Raycast(origin, dir, maxLength, aimCollisionMask);
         Vector2 end = hit.collider != null ? hit.point : origin + dir * maxLength;
 
         aimLine.enabled = true;
@@ -375,6 +473,15 @@ private void Update()
     {
         if (EventSystem.current != null) return;
         new GameObject("EventSystem", typeof(EventSystem), typeof(UnityEngine.InputSystem.UI.InputSystemUIInputModule));
+    }
+
+    private void CachePhysicsLayers()
+    {
+        aimCollisionMask = ~0;
+        int tableLayer = LayerMask.NameToLayer("WarfestTable");
+        int shotLayer = LayerMask.NameToLayer("WarfestShot");
+        if (tableLayer >= 0) aimCollisionMask &= ~(1 << tableLayer);
+        if (shotLayer >= 0) aimCollisionMask &= ~(1 << shotLayer);
     }
 
 private void EnsureCamera()
@@ -406,6 +513,7 @@ private void BuildWorld()
             List<WarfestLevelCatalog.ModelTableSpec> tableSpecs = new List<WarfestLevelCatalog.ModelTableSpec>();
             WarfestLevelCatalog.FillModelTables(level.number - 1, tableSpecs);
             modelTableTopYs.Clear();
+            modelTableCenterXs.Clear();
             for (int i = 0; i < tableSpecs.Count; i++) CreateModelTable(tableSpecs[i], i);
             BuildModelLayout(level.number);
         }
@@ -444,7 +552,7 @@ private void CreateModelTable(WarfestLevelCatalog.ModelTableSpec spec, int index
         ApplyModelMaterial(table, tableModelMaterial);
         table.name = "Level Table Model " + (index + 1).ToString("00");
         table.transform.localPosition = Vector3.zero;
-        table.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+        table.transform.localRotation = Quaternion.Euler(-90f, spec.yawDegrees, 0f);
 
         // Measure after the X rotation so the support collider and box stack follow the real rendered tabletop.
         Bounds sourceBounds = GetModelBounds(table);
@@ -461,6 +569,7 @@ private void CreateModelTable(WarfestLevelCatalog.ModelTableSpec spec, int index
         // measure the true top by raycasting down onto the mesh. Crates rest on THIS height.
         float modelTableTopY = MeasureTableSurfaceY(table, tableBounds);
         modelTableTopYs.Add(modelTableTopY);
+        modelTableCenterXs.Add(tableBounds.center.x);
 
         GameObject surface = new GameObject("Level Table Surface " + (index + 1).ToString("00"), typeof(BoxCollider2D));
         surface.transform.SetParent(worldRoot, false);
@@ -480,11 +589,16 @@ private void CreateModelTable(WarfestLevelCatalog.ModelTableSpec spec, int index
         Sprite sprite = blockSprites[spriteIndex];
 
         Vector2 spriteSize = sprite.bounds.size;
+        Vector2 scaledBlockSize = spec.size * BlockSizeMultiplier;
         Vector2 localScale = new Vector2(
-            spriteSize.x > 0.0001f ? spec.size.x / spriteSize.x : 1f,
-            spriteSize.y > 0.0001f ? spec.size.y / spriteSize.y : 1f);
+            spriteSize.x > 0.0001f ? scaledBlockSize.x / spriteSize.x : 1f,
+            spriteSize.y > 0.0001f ? scaledBlockSize.y / spriteSize.y : 1f);
 
-        GameObject block = CreateSprite("Target " + (index + 1).ToString("00"), sprite, new Vector3(spec.position.x, spec.position.y, 0f), localScale, 2);
+        const float legacyTableTopY = -0.3515f;
+        Vector2 scaledPosition = new Vector2(
+            spec.position.x * BlockSizeMultiplier,
+            legacyTableTopY + (spec.position.y - legacyTableTopY) * BlockSizeMultiplier);
+        GameObject block = CreateSprite("Target " + (index + 1).ToString("00"), sprite, new Vector3(scaledPosition.x, scaledPosition.y, 0f), localScale, 2);
         block.transform.rotation = Quaternion.Euler(0f, 0f, spec.rotation);
         block.GetComponent<SpriteRenderer>().color = spec.color;
 
@@ -498,11 +612,17 @@ private void CreateModelTable(WarfestLevelCatalog.ModelTableSpec spec, int index
 
         body.constraints = RigidbodyConstraints2D.FreezePositionX | RigidbodyConstraints2D.FreezeRotation;
         body.angularDamping = 0.4f;
-        body.interpolation = RigidbodyInterpolation2D.Interpolate;
-        body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        // Only the small, fast projectiles need continuous collision. Blocks move under gravity
+        // after impact, so discrete contacts avoid a costly continuous solver for every target.
+        body.interpolation = RigidbodyInterpolation2D.None;
+        body.collisionDetectionMode = CollisionDetectionMode2D.Discrete;
         WarfestTarget target = block.AddComponent<WarfestTarget>();
         target.Initialize(this);
         blocks.Add(block);
+        blockBodies.Add(body);
+        blockColliders.Add(collider);
+        blockTargets.Add(target);
+        checkFallenTargets = true;
     }
 
 private void BuildModelLayout(int levelNumber)
@@ -527,10 +647,13 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         const float colliderInset = 0.006f;
 
         string layerName = spec.depthLayer == 0 ? "Front" : "Rear";
+        int tableIndex = Mathf.Clamp(spec.tableIndex, 0, Mathf.Max(0, modelTableTopYs.Count - 1));
+        float tableCenterX = modelTableCenterXs.Count > tableIndex ? modelTableCenterXs[tableIndex] : 0f;
+        float scaledX = tableCenterX + (spec.x - tableCenterX) * BlockSizeMultiplier;
         GameObject block = new GameObject(layerName + " Crate " + (index + 1).ToString("00"));
         block.transform.SetParent(worldRoot, false);
         float renderDepth = spec.depthLayer == 0 ? WarfestLevelCatalog.FrontLayerZ : WarfestLevelCatalog.RearLayerZ;
-        block.transform.localPosition = new Vector3(spec.x, 0f, renderDepth);
+        block.transform.localPosition = new Vector3(scaledX, 0f, renderDepth);
 
         GameObject visual = Instantiate(prefab);
         visual.name = "Visual";
@@ -539,8 +662,10 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         ApplyModelMaterial(visual, GetBoxMaterial(spec.variant));
 
         Bounds sourceBounds = GetModelBounds(visual);
-        float widthScale = (spec.width + visualOverlap) / sourceBounds.size.x;
-        float heightScale = (spec.height + visualOverlap) / sourceBounds.size.y;
+        float scaledWidth = spec.width * BlockSizeMultiplier;
+        float scaledHeight = spec.height * BlockSizeMultiplier;
+        float widthScale = (scaledWidth + visualOverlap) / sourceBounds.size.x;
+        float heightScale = (scaledHeight + visualOverlap) / sourceBounds.size.y;
         float depthScale = Mathf.Min(widthScale, heightScale);
         // Both requested models are fitted uniformly in depth and explicitly in the 2D gameplay plane.
         Vector3 fittedScale = new Vector3(widthScale, depthScale, heightScale);
@@ -559,9 +684,8 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         visual.transform.position += blockPosition - fittedBounds.center;
         float visualHeight = GetModelBounds(visual).size.y;
 
-        int tableIndex = Mathf.Clamp(spec.tableIndex, 0, Mathf.Max(0, modelTableTopYs.Count - 1));
         float tableTopY = modelTableTopYs.Count > 0 ? modelTableTopYs[tableIndex] : -0.351f;
-        float desiredBottomY = tableTopY + tabletopGap + spec.yOffset;
+        float desiredBottomY = tableTopY + tabletopGap + spec.yOffset * BlockSizeMultiplier;
         block.transform.position = new Vector3(
             blockPosition.x,
             desiredBottomY + visualHeight * 0.5f,
@@ -576,10 +700,10 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
 
         // Keep the physics footprint aligned with the visible bottom. Every base row touches the
         // table surface, and each higher 0.72-unit row contacts the collider directly below it.
-        float colliderHeight = Mathf.Max(0.05f, spec.height);
+        float colliderHeight = Mathf.Max(0.05f, scaledHeight);
         BoxCollider2D gameplayCollider = block.AddComponent<BoxCollider2D>();
         gameplayCollider.size = new Vector2(
-            Mathf.Max(0.05f, spec.width - colliderInset),
+            Mathf.Max(0.05f, scaledWidth - colliderInset),
             colliderHeight);
         gameplayCollider.offset = new Vector2(0f, (colliderHeight - visualHeight) * 0.5f);
 
@@ -588,7 +712,7 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         for (int i = 0; i < blocks.Count && i < blockDepthLayers.Count; i++)
         {
             if (blockDepthLayers[i] == spec.depthLayer) continue;
-            BoxCollider2D otherCollider = blocks[i] != null ? blocks[i].GetComponent<BoxCollider2D>() : null;
+            BoxCollider2D otherCollider = i < blockColliders.Count ? blockColliders[i] as BoxCollider2D : null;
             if (otherCollider != null) Physics2D.IgnoreCollision(gameplayCollider, otherCollider, true);
         }
 
@@ -598,14 +722,17 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         body.gravityScale = 0f;
         body.linearDamping = 0.16f;
         body.angularDamping = 0.55f;
-        body.interpolation = RigidbodyInterpolation2D.Interpolate;
-        body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        body.interpolation = RigidbodyInterpolation2D.None;
+        body.collisionDetectionMode = CollisionDetectionMode2D.Discrete;
 
         WarfestTarget target = block.AddComponent<WarfestTarget>();
         // Only the bomb variant carries explosive chain behaviour. Cannisters are ordinary
         // physical targets (they shift weight and topple, but do not detonate).
         target.Initialize(this, spec.variant == WarfestLevelCatalog.BOMB);
         blocks.Add(block);
+        blockBodies.Add(body);
+        blockColliders.Add(gameplayCollider);
+        blockTargets.Add(target);
         blockDepthLayers.Add(spec.depthLayer);
     }
 
@@ -653,11 +780,12 @@ private void CreatePistol()
     {
         if (pistolSprite == null) return;
 
-        CreateCannonBase();
+        float cannonDownOffset = ScreenPixelsToWorldHeight(CannonVerticalOffsetPixels);
+        CreateCannonBase(cannonDownOffset);
         pistolPivot = new GameObject("Pistol Pivot").transform;
         pistolPivot.SetParent(worldRoot, false);
         pistolPivot.localScale = new Vector3(1.7f, 1.7f, 1f);
-        pistolPivot.position = new Vector3(0f, -3.5f, -1f);
+        pistolPivot.position = new Vector3(0f, -3.5f - cannonDownOffset, -1f);
 
         pistolVisual = CreateSprite(
             "Pistol",
@@ -697,15 +825,21 @@ private void CreatePistol()
         aimLine.enabled = false;
     }
 
-private void CreateCannonBase()
+private void CreateCannonBase(float downOffset)
     {
         if (pistolBaseSprite == null) return;
         CreateSprite(
             "Pistol Base",
             pistolBaseSprite,
-            new Vector3(0f, -4.02f, -0.25f),
+            new Vector3(0f, -4.02f - downOffset, -0.25f),
             new Vector2(0.46f, 0.46f),
             4);
+    }
+
+    private float ScreenPixelsToWorldHeight(float pixels)
+    {
+        if (gameplayCamera == null || Screen.height <= 0) return pixels * (12.7f / 844f);
+        return pixels * (gameplayCamera.orthographicSize * 2f / Screen.height);
     }
 
     private void CreateBasePad(string name, Vector3 position, Vector2 scale, Color color)
@@ -787,9 +921,19 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
         pistolPivot.rotation = Quaternion.Euler(0f, 0f, angle - 90f);
     }
 
-    private void Fire()
+private void Fire()
     {
         if (levelEnded) return;
+        checkFallenTargets = modelPhysicsReleased || level.number > WarfestLevelCatalog.AuthoredLevelCount;
+        nextFallenTargetCheckTime = Time.time;
+
+        // Infinite balls is selected in advance, but its three-second timer starts on this first shot.
+        if (infiniteBallsActive && infiniteBallsWaitingForFirstShot)
+        {
+            infiniteBallsWaitingForFirstShot = false;
+            infiniteBallsTimeRemaining = InfiniteBallsDurationSeconds;
+            RefreshBoosterStatus();
+        }
 
         // Infinite balls skips the allowance entirely; otherwise a shot needs a ball to spend.
         if (!infiniteBallsActive)
@@ -802,6 +946,7 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
         WarfestBooster booster = armedBooster;
 
         recoilTime = 0.11f;
+        PlayShootSound();
         RefreshHud();
         Vector2 launchPosition = muzzle.position;
         Vector2 launchDirection = hasAimPoint ? aimWorldPosition - launchPosition : (Vector2)muzzle.up;
@@ -817,8 +962,6 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
         }
         else if (boosted && booster == WarfestBooster.SkullShot)
         {
-            // The skull ball must reach every block in its path, so it is never committed to a
-            // single tapped target.
             CreateBall(launchPosition, launchDirection, null, WarfestBall.ShotMode.Piercing);
         }
         else if (boosted && booster == WarfestBooster.Missile)
@@ -830,9 +973,9 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
             CreateBall(launchPosition, launchDirection, intendedTarget);
         }
 
+        // Shot boosters were paid for when selected. Firing only clears the lock and status message.
         if (boosted)
         {
-            WarfestSession.ConsumeBooster(booster);
             hasArmedBooster = false;
             RefreshBoosterHud();
         }
@@ -861,14 +1004,15 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
     // shot resolves against the exact block the player aimed at (front plane wins ties on depth).
     private WarfestTarget FindTargetAt(Vector2 point)
     {
-        Collider2D[] overlaps = Physics2D.OverlapPointAll(point);
+        int overlapCount = Physics2D.OverlapPoint(point, ContactFilter2D.noFilter, targetOverlapResults);
         WarfestTarget best = null;
         float bestZ = float.MaxValue;
-        for (int i = 0; i < overlaps.Length; i++)
+        for (int i = 0; i < overlapCount; i++)
         {
-            WarfestTarget target = overlaps[i].GetComponent<WarfestTarget>();
+            Collider2D overlap = targetOverlapResults[i];
+            WarfestTarget target = overlap != null ? overlap.GetComponent<WarfestTarget>() : null;
             if (target == null || target.IsBroken) continue;
-            float z = overlaps[i].transform.position.z;
+            float z = overlap.transform.position.z;
             if (z < bestZ)
             {
                 bestZ = z;
@@ -926,11 +1070,10 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
         // Piercing shots are never committed - they are meant to hit everything on the way through.
         if (intendedTarget != null && !piercing)
         {
-            Collider2D targetCollider = intendedTarget.GetComponent<Collider2D>();
-            for (int i = 0; i < blocks.Count; i++)
+            Collider2D targetCollider = intendedTarget.Collider;
+            for (int i = 0; i < blockColliders.Count; i++)
             {
-                if (blocks[i] == null) continue;
-                Collider2D blockCollider = blocks[i].GetComponent<Collider2D>();
+                Collider2D blockCollider = blockColliders[i];
                 if (blockCollider != null && blockCollider != targetCollider)
                 {
                     Physics2D.IgnoreCollision(collider, blockCollider, true);
@@ -947,6 +1090,7 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
         body.linearVelocity = direction.normalized * ShotSpeed;
         body.angularVelocity = -direction.normalized.x * 540f;
         float impact = (5.8f + level.difficulty * 0.5f) * (piercing ? 1.8f : 1f);
+        activeBalls++;
         ball.GetComponent<WarfestBall>().Initialize(direction, impact, ShotLifetime, mode, this);
     }
 
@@ -991,12 +1135,11 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
     // moving, meaning nothing else can clear a target this attempt.
     private bool WorldHasSettled()
     {
-        if (Object.FindObjectsByType<WarfestBall>(FindObjectsInactive.Exclude).Length > 0) return false;
+        if (activeBalls > 0) return false;
 
-        for (int i = 0; i < blocks.Count; i++)
+        for (int i = 0; i < blockBodies.Count; i++)
         {
-            if (blocks[i] == null) continue;
-            Rigidbody2D body = blocks[i].GetComponent<Rigidbody2D>();
+            Rigidbody2D body = blockBodies[i];
             if (body == null) continue;
             if (body.bodyType == RigidbodyType2D.Dynamic && body.linearVelocity.sqrMagnitude > 0.04f)
             {
@@ -1006,10 +1149,37 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
         return true;
     }
 
+    private void CheckFallenTargets()
+    {
+        bool hasMovingTarget = false;
+        for (int i = 0; i < blockTargets.Count; i++)
+        {
+            WarfestTarget target = blockTargets[i];
+            Rigidbody2D body = i < blockBodies.Count ? blockBodies[i] : null;
+            if (target == null || target.IsBroken || body == null || body.bodyType != RigidbodyType2D.Dynamic) continue;
+
+            if (body.IsAwake()) hasMovingTarget = true;
+            Vector2 position = body.position;
+            if (position.y < -4.65f || Mathf.Abs(position.x) > 5.4f) target.BreakFromExplosion();
+        }
+
+        // Sleeping bodies no longer need a continuous scan. Fire() re-arms this before a future
+        // impact; while a structure is moving it is sampled at 10 Hz instead of every frame.
+        checkFallenTargets = hasMovingTarget;
+    }
+
+    public void NotifyBallDestroyed()
+    {
+        activeBalls = Mathf.Max(0, activeBalls - 1);
+    }
+
 public void RegisterTargetBroken(WarfestTarget target)
     {
         if (levelEnded) return;
         ReleaseModelPhysics();
+        checkFallenTargets = true;
+        nextFallenTargetCheckTime = Time.time + FallenTargetCheckInterval;
+        PlayBlockPopSound();
 
         targetsRemaining = Mathf.Max(0, targetsRemaining - 1);
         if (targetText != null) targetText.text = targetsRemaining.ToString("00");
@@ -1046,11 +1216,13 @@ public void RegisterTargetBroken(WarfestTarget target)
     // range and shoves every rigidbody outward with distance falloff.
     private void ApplyBlast(Vector2 center, float blastRadius, WarfestTarget source)
     {
-        Collider2D[] hits = Physics2D.OverlapCircleAll(center, blastRadius);
-        HashSet<Rigidbody2D> pushedBodies = new HashSet<Rigidbody2D>();
-        for (int i = 0; i < hits.Length; i++)
+        int hitCount = Physics2D.OverlapCircle(center, blastRadius, ContactFilter2D.noFilter, blastOverlapResults);
+        pushedBodies.Clear();
+        for (int i = 0; i < hitCount; i++)
         {
-            WarfestTarget target = hits[i].GetComponent<WarfestTarget>();
+            Collider2D hit = blastOverlapResults[i];
+            if (hit == null) continue;
+            WarfestTarget target = hit.GetComponent<WarfestTarget>();
             if (target != null && target != source && !target.IsBroken)
             {
                 // A bomb caught in the blast chains into its own explosion; everything else just
@@ -1060,7 +1232,7 @@ public void RegisterTargetBroken(WarfestTarget target)
                 else target.BreakFromExplosion();
             }
 
-            Rigidbody2D body = hits[i].attachedRigidbody;
+            Rigidbody2D body = hit.attachedRigidbody;
             if (body == null || !pushedBodies.Add(body)) continue;
             Vector2 offset = body.worldCenterOfMass - center;
             float distance = Mathf.Max(0.12f, offset.magnitude);
@@ -1190,7 +1362,7 @@ public void RegisterTargetBroken(WarfestTarget target)
         pistolVisual.localPosition = pistolRestLocalPosition - Vector3.up * offset;
     }
 
-private void BuildHud()
+    private void BuildHud()
     {
         hudCanvas = CreateCanvas("Game HUD Canvas");
         RectTransform root = hudCanvas.transform as RectTransform;
@@ -1213,43 +1385,368 @@ private void BuildHud()
 
         Button menu = CreateSpriteButton(safeAreaRoot, "Settings Menu", settingsPanelSprite,
             new Vector2(0.865f, 0.937f), new Vector2(0.18f, 0.092f));
-        menu.onClick.AddListener(WarfestSession.ReturnToMenu);
+        menu.onClick.AddListener(ToggleSettingsMenu);
 
         BuildBoosterHud();
+        BuildSettingsFlyout();
+    }
+
+    private void BuildSettingsFlyout()
+    {
+        RectTransform flyout = CreateRect(safeAreaRoot, "Settings Flyout", new Vector2(0.5f, 0.5f), Vector2.one);
+        settingsFlyout = flyout.gameObject;
+
+        Button leave = CreateSettingsIconButton(flyout, "Leave Level", settingsDisabledSprite, leaveIconSprite,
+            new Vector2(0.865f, 0.79f), new Vector2(0.13f, 0.14f), out _);
+        leave.onClick.AddListener(ShowLeaveConfirmation);
+
+        Button sound = CreateSettingsIconButton(flyout, "Sound Toggle", settingsEnabledSprite, soundIconSprite,
+            new Vector2(0.865f, 0.63f), new Vector2(0.13f, 0.14f), out soundButtonBackground);
+        sound.onClick.AddListener(ToggleSound);
+
+        Button music = CreateSettingsIconButton(flyout, "Music Toggle", settingsEnabledSprite, musicIconSprite,
+            new Vector2(0.865f, 0.47f), new Vector2(0.13f, 0.14f), out musicButtonBackground);
+        music.onClick.AddListener(ToggleMusic);
+
+        RectTransform confirmation = CreateRect(safeAreaRoot, "Leave Confirmation", new Vector2(0.5f, 0.5f), Vector2.one);
+        leaveConfirmation = confirmation.gameObject;
+        CreateImage(confirmation, "Dim Background", new Color(0.02f, 0.04f, 0.08f, 0.76f),
+            new Vector2(0.5f, 0.5f), Vector2.one);
+        CreateImage(confirmation, "Confirmation Card", new Color(1f, 0.99f, 0.94f, 0.99f),
+            new Vector2(0.5f, 0.5f), new Vector2(0.52f, 0.50f));
+        CreateText(confirmation, "Confirmation Title", "LEAVE LEVEL?", 32, Ink, TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 0.62f), new Vector2(0.43f, 0.10f), headingFont);
+        CreateText(confirmation, "Confirmation Copy", "ARE YOU SURE?\nYOU WILL LOSE 1 LIFE", 18,
+            new Color(0.32f, 0.37f, 0.43f, 1f), TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 0.51f), new Vector2(0.42f, 0.13f), bodyFont);
+        Button confirm = CreateButton(confirmation, "Confirm Leave", "LEAVE", new Color(0.78f, 0.12f, 0.12f, 1f),
+            new Vector2(0.41f, 0.37f), new Vector2(0.18f, 0.11f), 16);
+        confirm.onClick.AddListener(ConfirmLeaveLevel);
+        Button cancel = CreateButton(confirmation, "Cancel Leave", "CANCEL", new Color(0.18f, 0.52f, 0.22f, 1f),
+            new Vector2(0.59f, 0.37f), new Vector2(0.18f, 0.11f), 16);
+        cancel.onClick.AddListener(CancelLeaveConfirmation);
+
+        settingsFlyout.SetActive(false);
+        leaveConfirmation.SetActive(false);
+        RefreshSettingsButtons();
+    }
+
+    private Button CreateSettingsIconButton(Transform parent, string name, Sprite backgroundSprite, Sprite iconSprite,
+        Vector2 center, Vector2 size, out Image background)
+    {
+        GameObject gameObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+        gameObject.transform.SetParent(parent, false);
+        ApplyRect(gameObject.GetComponent<RectTransform>(), parent, center, size);
+        background = gameObject.GetComponent<Image>();
+        background.sprite = backgroundSprite;
+        background.color = Color.white;
+        background.preserveAspect = true;
+
+        Button button = gameObject.GetComponent<Button>();
+        ColorBlock colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1f, 1f, 1f, 0.92f);
+        colors.pressedColor = new Color(0.82f, 0.86f, 0.9f, 1f);
+        colors.selectedColor = colors.highlightedColor;
+        button.colors = colors;
+
+        Image icon = CreateSpriteImage(gameObject.transform, "Icon", iconSprite, Color.white,
+            new Vector2(0.5f, 0.52f), new Vector2(0.74f, 0.68f), true);
+        icon.raycastTarget = false;
+        return button;
+    }
+
+    private void ToggleSettingsMenu()
+    {
+        if (levelEnded || settingsFlyout == null) return;
+        settingsOpen = !settingsOpen;
+        settingsFlyout.SetActive(settingsOpen);
+        if (leaveConfirmation != null) leaveConfirmation.SetActive(false);
+        CancelAim();
+    }
+
+    private void ShowLeaveConfirmation()
+    {
+        if (levelEnded || leaveConfirmation == null) return;
+        settingsOpen = true;
+        settingsFlyout.SetActive(false);
+        leaveConfirmation.SetActive(true);
+        CancelAim();
+    }
+
+    private void CancelLeaveConfirmation()
+    {
+        if (levelEnded) return;
+        leaveConfirmation.SetActive(false);
+        settingsFlyout.SetActive(true);
+        settingsOpen = true;
+    }
+
+    private void ConfirmLeaveLevel()
+    {
+        if (levelEnded) return;
+        levelEnded = true;
+        settingsOpen = false;
+        if (settingsFlyout != null) settingsFlyout.SetActive(false);
+        if (leaveConfirmation != null) leaveConfirmation.SetActive(false);
+        WarfestSession.ConsumeLife();
+        CreateFailurePanel(false, "MISSION ABANDONED");
+        StartCoroutine(ReturnToMenuAfterFailure());
+    }
+
+    private IEnumerator ReturnToMenuAfterFailure()
+    {
+        yield return new WaitForSecondsRealtime(1.25f);
+        WarfestSession.ReturnToMenu();
+    }
+
+    private void ToggleSound()
+    {
+        soundEnabled = !soundEnabled;
+        PlayerPrefs.SetInt(SoundEnabledKey, soundEnabled ? 1 : 0);
+        PlayerPrefs.Save();
+        ApplyAudioPreferences();
+        RefreshSettingsButtons();
+    }
+
+    private void ToggleMusic()
+    {
+        musicEnabled = !musicEnabled;
+        PlayerPrefs.SetInt(MusicEnabledKey, musicEnabled ? 1 : 0);
+        PlayerPrefs.Save();
+        ApplyAudioPreferences();
+        RefreshSettingsButtons();
+    }
+
+    private void RefreshSettingsButtons()
+    {
+        if (soundButtonBackground != null)
+        {
+            soundButtonBackground.sprite = soundEnabled ? settingsEnabledSprite : settingsDisabledSprite;
+        }
+        if (musicButtonBackground != null)
+        {
+            musicButtonBackground.sprite = musicEnabled ? settingsEnabledSprite : settingsDisabledSprite;
+        }
+    }
+
+    private void ApplyAudioPreferences()
+    {
+        AudioSource[] sources = Object.FindObjectsByType<AudioSource>(FindObjectsInactive.Include);
+        foreach (AudioSource source in sources)
+        {
+            if (source == null) continue;
+            string sourceName = source.gameObject.name.ToLowerInvariant();
+            bool isMusic = source.loop || sourceName.Contains("music") || sourceName.Contains("theme");
+            source.mute = isMusic ? !musicEnabled : !soundEnabled;
+        }
+    }
+
+    // The project does not yet include licensed sound files, so these compact procedural clips
+    // provide an immediately playable sample set. They are created once per game scene and use
+    // ordinary AudioSources, which keeps the existing sound/music toggles authoritative.
+    private void BuildAudio()
+    {
+        GameObject audioRoot = new GameObject("Gameplay Audio");
+        audioRoot.transform.SetParent(transform, false);
+
+        GameObject sfxObject = new GameObject("Gameplay SFX");
+        sfxObject.transform.SetParent(audioRoot.transform, false);
+        sfxSource = sfxObject.AddComponent<AudioSource>();
+        sfxSource.playOnAwake = false;
+        sfxSource.spatialBlend = 0f;
+        sfxSource.volume = 0.72f;
+
+        GameObject musicObject = new GameObject("Gameplay Music");
+        musicObject.transform.SetParent(audioRoot.transform, false);
+        musicSource = musicObject.AddComponent<AudioSource>();
+        musicSource.playOnAwake = false;
+        musicSource.loop = true;
+        musicSource.spatialBlend = 0f;
+        musicSource.volume = 0.32f;
+
+        shootClip = CreateShootClip();
+        blockPopClip = CreateBlockPopClip();
+        // Keep a managed reference as well as the AudioSource reference. Runtime-created clips
+        // are otherwise eligible for unloading on some Unity targets during a scene refresh.
+        musicClip = CreateMusicClip();
+        musicSource.clip = musicClip;
+        musicSource.Play();
+    }
+
+    private void PlayShootSound()
+    {
+        if (soundEnabled && sfxSource != null && shootClip != null)
+        {
+            sfxSource.PlayOneShot(shootClip, 0.72f);
+        }
+    }
+
+    private void PlayBlockPopSound()
+    {
+        if (!soundEnabled || sfxSource == null || blockPopClip == null) return;
+
+        // A chain reaction may remove many blocks in one frame. Keep that readable without
+        // stacking dozens of identical samples on top of each other.
+        if (Time.unscaledTime - lastBlockPopTime < 0.045f) return;
+        lastBlockPopTime = Time.unscaledTime;
+        sfxSource.PlayOneShot(blockPopClip, 0.58f);
+    }
+
+    private static AudioClip CreateShootClip()
+    {
+        const float duration = 0.16f;
+        int sampleCount = Mathf.CeilToInt(AudioSampleRate * duration);
+        float[] samples = new float[sampleCount];
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float time = i / (float)AudioSampleRate;
+            float envelope = Mathf.Pow(1f - time / duration, 2.4f);
+            float sweep = Mathf.Lerp(740f, 210f, time / duration);
+            samples[i] = Mathf.Sin(time * sweep * Mathf.PI * 2f) * envelope * 0.52f;
+        }
+        AudioClip clip = AudioClip.Create("Sample Shoot", sampleCount, 1, AudioSampleRate, false);
+        clip.SetData(samples, 0);
+        return clip;
+    }
+
+    private static AudioClip CreateBlockPopClip()
+    {
+        const float duration = 0.13f;
+        int sampleCount = Mathf.CeilToInt(AudioSampleRate * duration);
+        float[] samples = new float[sampleCount];
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float time = i / (float)AudioSampleRate;
+            float envelope = Mathf.Pow(1f - time / duration, 3.2f);
+            float tone = Mathf.Sin(time * 980f * Mathf.PI * 2f) * 0.54f;
+            float thump = Mathf.Sin(time * 190f * Mathf.PI * 2f) * 0.26f;
+            samples[i] = (tone + thump) * envelope;
+        }
+        AudioClip clip = AudioClip.Create("Sample Block Pop", sampleCount, 1, AudioSampleRate, false);
+        clip.SetData(samples, 0);
+        return clip;
+    }
+
+    private static AudioClip CreateMusicClip()
+    {
+        const float duration = 8f;
+        int sampleCount = Mathf.CeilToInt(AudioSampleRate * duration);
+        float[] samples = new float[sampleCount];
+        float[] notes = { 110f, 130.81f, 146.83f, 164.81f, 146.83f, 130.81f, 123.47f, 146.83f };
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float time = i / (float)AudioSampleRate;
+            int step = Mathf.FloorToInt(time * 2f) % notes.Length;
+            float stepTime = time % 0.5f;
+            float noteEnvelope = Mathf.Exp(-5.2f * stepTime);
+            float note = notes[step];
+            float bass = Mathf.Sin(time * note * Mathf.PI * 2f) * noteEnvelope * 0.18f;
+            float lead = Mathf.Sin(time * note * 2f * Mathf.PI * 2f) * noteEnvelope * 0.045f;
+            float pad = (Mathf.Sin(time * 55f * Mathf.PI * 2f) + Mathf.Sin(time * 82.41f * Mathf.PI * 2f)) * 0.035f;
+            samples[i] = bass + lead + pad;
+        }
+        AudioClip clip = AudioClip.Create("Sample Gameplay Music", sampleCount, 1, AudioSampleRate, false);
+        clip.SetData(samples, 0);
+        return clip;
     }
 
     // Lays the four boosters out in the bottom corners, mirroring the reference art: infinite balls
     // above the spread fan on the left, the skull shot above the missile on the right.
-    private void BuildBoosterHud()
+private void BuildBoosterHud()
     {
         Vector2 buttonSize = new Vector2(0.235f, 0.115f);
         CreateBoosterButton(WarfestBooster.InfiniteBalls, new Vector2(0.135f, 0.205f), buttonSize);
         CreateBoosterButton(WarfestBooster.SpreadShot, new Vector2(0.135f, 0.078f), buttonSize);
         CreateBoosterButton(WarfestBooster.SkullShot, new Vector2(0.865f, 0.205f), buttonSize);
         CreateBoosterButton(WarfestBooster.Missile, new Vector2(0.865f, 0.078f), buttonSize);
+
+        Image panel = CreateImage(safeAreaRoot, "Booster Status", new Color(0.055f, 0.12f, 0.20f, 0.94f),
+            new Vector2(0.5f, 0.835f), new Vector2(0.74f, 0.075f));
+        boosterStatusPanel = panel.gameObject;
+        boosterStatusText = CreateText(panel.transform, "Booster Status Text", string.Empty, 14, Color.white,
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.62f), new Vector2(0.96f, 0.48f), headingFont);
+        boosterStatusText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        boosterStatusText.verticalOverflow = VerticalWrapMode.Overflow;
+        boosterStatusText.raycastTarget = false;
+        AddTextOutline(boosterStatusText, new Color(0f, 0f, 0f, 0.65f), new Vector2(1f, -1f));
+
+        Image progressTrack = CreateImage(panel.transform, "Booster Progress Track",
+            new Color(1f, 1f, 1f, 0.22f), new Vector2(0.5f, 0.16f), new Vector2(0.92f, 0.13f));
+        progressTrack.raycastTarget = false;
+        boosterProgressTrack = progressTrack.gameObject;
+
+        boosterProgressFill = CreateImage(panel.transform, "Booster Progress Fill",
+            new Color(0.25f, 0.88f, 0.35f, 1f), new Vector2(0.5f, 0.16f), new Vector2(0.92f, 0.13f));
+        boosterProgressFill.raycastTarget = false;
+        boosterProgressFill.type = Image.Type.Filled;
+        boosterProgressFill.fillMethod = Image.FillMethod.Horizontal;
+        boosterProgressFill.fillOrigin = 0;
+        boosterProgressFill.fillAmount = 1f;
+
+        boosterStatusPanel.SetActive(false);
         RefreshBoosterHud();
     }
 
-    private void CreateBoosterButton(WarfestBooster booster, Vector2 center, Vector2 size)
+private void RefreshBoosterStatus()
+    {
+        if (boosterStatusPanel == null) return;
+
+        bool showingInfinite = infiniteBallsActive;
+        bool showingShotBooster = hasArmedBooster;
+        if (!showingInfinite && !showingShotBooster)
+        {
+            boosterStatusPanel.SetActive(false);
+            return;
+        }
+
+        if (!boosterStatusPanel.activeSelf) boosterStatusPanel.SetActive(true);
+        WarfestBooster booster = showingInfinite ? WarfestBooster.InfiniteBalls : armedBooster;
+        switch (booster)
+        {
+            case WarfestBooster.InfiniteBalls:
+                boosterStatusText.text = "INFINITE BALLS - SHOOT TO START 3s";
+                break;
+            case WarfestBooster.SkullShot:
+                boosterStatusText.text = "SKULL SHOT - PIERCES ALL BLOCKS";
+                break;
+            case WarfestBooster.SpreadShot:
+                boosterStatusText.text = "SPREAD SHOT - FIRES 3 BALLS";
+                break;
+            default:
+                boosterStatusText.text = "MISSILE - EXPLODES ON IMPACT";
+                break;
+        }
+
+        bool showProgress = booster == WarfestBooster.InfiniteBalls;
+        if (boosterProgressTrack != null) boosterProgressTrack.SetActive(showProgress);
+        if (boosterProgressFill != null)
+        {
+            boosterProgressFill.gameObject.SetActive(showProgress);
+            boosterProgressFill.fillAmount = infiniteBallsWaitingForFirstShot
+                ? 1f
+                : Mathf.Clamp01(infiniteBallsTimeRemaining / InfiniteBallsDurationSeconds);
+        }
+    }
+
+
+private void CreateBoosterButton(WarfestBooster booster, Vector2 center, Vector2 size)
     {
         int index = (int)booster;
         Button button = CreateSpriteButton(safeAreaRoot, "Booster " + booster, GetBoosterSprite(booster), center, size);
+        button.transition = Selectable.Transition.None;
+        button.navigation = new Navigation { mode = Navigation.Mode.None };
+        boosterButtons[index] = button;
         boosterButtonImages[index] = button.GetComponent<Image>();
 
-        // A soft glow sits behind the icon and is switched on while the booster is armed/active.
-        Image glow = CreateSpriteImage(button.transform, "Arm Glow", GetCannonBaseSprite(),
-            new Color(1f, 0.92f, 0.35f, 0.6f), new Vector2(0.5f, 0.5f), new Vector2(1.18f, 1.18f), true);
-        glow.raycastTarget = false;
-        glow.transform.SetAsFirstSibling();
-        glow.gameObject.SetActive(false);
-        boosterArmGlows[index] = glow.gameObject;
-
-        // Green "+" badge at the bottom-right corner, matching the reference art. It doubles as the
-        // owned-count readout once the player holds a stock of the booster.
-        Image badge = CreateSpriteImage(button.transform, "Booster Badge", GetCannonBaseSprite(),
+        // The count badge is the only visual that changes when a booster is selected. Reuse the
+        // green settings sprite so the count reads as a consistent button badge in the game HUD.
+        Sprite boosterCountBackground = settingsEnabledSprite != null ? settingsEnabledSprite : GetCannonBaseSprite();
+        Image badge = CreateSpriteImage(button.transform, "Booster Badge", boosterCountBackground,
             new Color(0.30f, 0.72f, 0.19f, 1f), new Vector2(0.82f, 0.12f), new Vector2(0.44f, 0.42f), true);
+        badge.color = new Color(0.30f, 0.72f, 0.19f, 1f);
         badge.raycastTarget = false;
-        Text badgeText = CreateText(badge.transform, "Booster Badge Label", "+", 19, Color.white,
+        Text badgeText = CreateText(badge.transform, "Booster Badge Label", "0", 19, Color.white,
             TextAnchor.MiddleCenter, new Vector2(0.5f, 0.52f), Vector2.one, headingFont);
         badgeText.raycastTarget = false;
         AddTextOutline(badgeText, new Color(0.10f, 0.30f, 0.08f, 1f), new Vector2(1f, -1f));
@@ -1277,74 +1774,153 @@ private void RefreshHud()
 
     // Repaints every booster button: dims the ones the player is out of, shows the owned count (or
     // a "+" prompt when empty) on the badge, and lights the glow on whichever booster is active.
-    private void RefreshBoosterHud()
+private void RefreshBoosterHud()
     {
+        bool selectionLocked = hasArmedBooster || infiniteBallsActive;
         for (int i = 0; i < WarfestSession.BoosterCount; i++)
         {
             WarfestBooster booster = (WarfestBooster)i;
             int count = WarfestSession.GetBoosterCount(booster);
             bool owned = count > 0;
-            bool armed = (hasArmedBooster && (int)armedBooster == i)
-                || (booster == WarfestBooster.InfiniteBalls && infiniteBallsActive);
 
+            if (boosterButtons[i] != null)
+            {
+                boosterButtons[i].interactable = owned && !selectionLocked;
+            }
             if (boosterButtonImages[i] != null)
             {
-                boosterButtonImages[i].color = owned ? Color.white : new Color(1f, 1f, 1f, 0.45f);
+                // Keep the original sprite and color in every state; only the count and interactivity change.
+                boosterButtonImages[i].color = Color.white;
             }
             if (boosterCountLabels[i] != null)
             {
-                boosterCountLabels[i].text = owned ? count.ToString() : "+";
+                boosterCountLabels[i].text = count.ToString();
             }
             if (boosterArmGlows[i] != null)
             {
-                boosterArmGlows[i].SetActive(armed);
+                boosterArmGlows[i].SetActive(false);
             }
         }
+
+        RefreshBoosterStatus();
     }
 
     // Handles a tap on a booster: infinite balls applies immediately, the shot boosters arm the
     // next shot (tapping the armed one again cancels it). Empty boosters are inert.
-    private void OnBoosterClicked(WarfestBooster booster)
+private void OnBoosterClicked(WarfestBooster booster)
     {
-        if (levelEnded) return;
-        if (WarfestSession.GetBoosterCount(booster) <= 0) return;
+        if (levelEnded || settingsOpen) return;
+        if (hasArmedBooster || infiniteBallsActive) return;
+        if (!WarfestSession.ConsumeBooster(booster)) return;
 
         if (booster == WarfestBooster.InfiniteBalls)
         {
-            if (infiniteBallsActive) return;
-            if (WarfestSession.ConsumeBooster(booster))
-            {
-                infiniteBallsActive = true;
-                RefreshHud();
-            }
-            RefreshBoosterHud();
-            return;
-        }
-
-        if (hasArmedBooster && armedBooster == booster)
-        {
-            hasArmedBooster = false; // second tap disarms
+            infiniteBallsActive = true;
+            infiniteBallsWaitingForFirstShot = true;
+            infiniteBallsTimeRemaining = InfiniteBallsDurationSeconds;
+            RefreshHud();
         }
         else
         {
             hasArmedBooster = true;
             armedBooster = booster;
         }
+
+        if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(null);
         RefreshBoosterHud();
+    }
+
+private void UpdateInfiniteBallsTimer()
+    {
+        if (!infiniteBallsActive) return;
+
+        // The status and full progress bar remain visible until the player fires the first ball.
+        if (infiniteBallsWaitingForFirstShot)
+        {
+            return;
+        }
+
+        infiniteBallsTimeRemaining -= Time.deltaTime;
+        if (Time.unscaledTime >= nextBoosterUiUpdateTime)
+        {
+            nextBoosterUiUpdateTime = Time.unscaledTime + BoosterUiUpdateInterval;
+            if (boosterProgressFill != null)
+            {
+                boosterProgressFill.fillAmount = Mathf.Clamp01(infiniteBallsTimeRemaining / InfiniteBallsDurationSeconds);
+            }
+        }
+        if (infiniteBallsTimeRemaining > 0f) return;
+
+        infiniteBallsTimeRemaining = 0f;
+        infiniteBallsActive = false;
+        infiniteBallsWaitingForFirstShot = false;
+        RefreshHud();
+        RefreshBoosterHud();
+
+        if (remainingBalls <= 0 && targetsRemaining > 0 && !levelEnded)
+        {
+            StartCoroutine(ShowFailureAfterDelay());
+        }
     }
 
 private void ShowFailure()
     {
+        if (levelEnded) return;
         levelEnded = true;
+        settingsOpen = false;
+        if (settingsFlyout != null) settingsFlyout.SetActive(false);
+        if (leaveConfirmation != null) leaveConfirmation.SetActive(false);
+        WarfestSession.ConsumeLife();
+        CreateFailurePanel(true, "OUT OF BALLS");
+    }
+
+    private void CreateFailurePanel(bool showActions, string reason)
+    {
         Transform parent = safeAreaRoot != null ? safeAreaRoot : (hudCanvas != null ? hudCanvas.transform : null);
         if (parent == null) return;
 
-        CreateImage(parent, "Failure Panel", new Color(1f, 1f, 1f, 0.97f), new Vector2(0.5f, 0.5f), new Vector2(0.50f, 0.54f));
-        CreateText(parent, "Failure Title", "OUT OF BALLS", 34, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.65f), new Vector2(0.42f, 0.10f));
-        Button retry = CreateButton(parent, "Retry", "RETRY LEVEL", Ink, new Vector2(0.5f, 0.49f), new Vector2(0.34f, 0.12f), 15);
-        retry.onClick.AddListener(() => WarfestSession.LoadLevel(level.number - 1));
-        Button menu = CreateButton(parent, "Back to Menu", "MAIN MENU", new Color(0.35f, 0.48f, 0.58f), new Vector2(0.5f, 0.33f), new Vector2(0.34f, 0.12f), 15);
-        menu.onClick.AddListener(WarfestSession.ReturnToMenu);
+        RectTransform overlay = CreateRect(parent, "Failure Overlay", new Vector2(0.5f, 0.5f), Vector2.one);
+        CreateImage(overlay, "Failure Dim", new Color(0.02f, 0.04f, 0.08f, 0.76f),
+            new Vector2(0.5f, 0.5f), Vector2.one);
+        CreateImage(overlay, "Failure Panel", new Color(1f, 1f, 1f, 0.98f),
+            new Vector2(0.5f, 0.5f), new Vector2(0.50f, showActions ? 0.62f : 0.45f));
+        CreateText(overlay, "Failure Title", "LEVEL FAILED", 34, Ink, TextAnchor.MiddleCenter,
+            new Vector2(0.5f, showActions ? 0.68f : 0.58f), new Vector2(0.42f, 0.10f), headingFont);
+        CreateText(overlay, "Failure Reason", reason, 18, new Color(0.66f, 0.12f, 0.12f, 1f),
+            TextAnchor.MiddleCenter, new Vector2(0.5f, showActions ? 0.57f : 0.47f), new Vector2(0.40f, 0.07f), bodyFont);
+        failureLifeStatus = CreateText(overlay, "Failure Lives", string.Empty, 16,
+            new Color(0.28f, 0.36f, 0.43f, 1f), TextAnchor.MiddleCenter,
+            new Vector2(0.5f, showActions ? 0.49f : 0.39f), new Vector2(0.42f, 0.07f), bodyFont);
+
+        if (showActions)
+        {
+            retryButton = CreateButton(overlay, "Retry", "RETRY LEVEL", Ink,
+                new Vector2(0.5f, 0.38f), new Vector2(0.34f, 0.11f), 15);
+            retryButton.onClick.AddListener(() => WarfestSession.LoadLevel(level.number - 1));
+            Button menu = CreateButton(overlay, "Back to Menu", "MAIN MENU", new Color(0.35f, 0.48f, 0.58f),
+                new Vector2(0.5f, 0.24f), new Vector2(0.34f, 0.11f), 15);
+            menu.onClick.AddListener(WarfestSession.ReturnToMenu);
+        }
+
+        displayedFailureLives = -1;
+        displayedFailureSeconds = -1;
+        RefreshFailureLifeStatus();
+    }
+
+    private void RefreshFailureLifeStatus()
+    {
+        if (failureLifeStatus == null) return;
+
+        int lives = WarfestSession.Lives;
+        int seconds = WarfestSession.SecondsUntilNextLife;
+        if (lives == displayedFailureLives && seconds == displayedFailureSeconds) return;
+
+        displayedFailureLives = lives;
+        displayedFailureSeconds = seconds;
+        failureLifeStatus.text = lives >= WarfestSession.MaxLives
+            ? "LIVES " + lives + " / " + WarfestSession.MaxLives
+            : "LIVES " + lives + " / " + WarfestSession.MaxLives + "   +1 IN " + WarfestSession.LifeTimerText;
+        if (retryButton != null) retryButton.interactable = lives > 0;
     }
 
 private Canvas CreateCanvas(string name)
@@ -1529,15 +2105,16 @@ private void ReleaseModelPhysics()
         if (modelPhysicsReleased || level.number > WarfestLevelCatalog.AuthoredLevelCount) return;
         modelPhysicsReleased = true;
 
-        for (int i = 0; i < blocks.Count; i++)
+        for (int i = 0; i < blockBodies.Count; i++)
         {
-            if (blocks[i] == null) continue;
-            Rigidbody2D body = blocks[i].GetComponent<Rigidbody2D>();
+            Rigidbody2D body = blockBodies[i];
             if (body == null) continue;
             body.bodyType = RigidbodyType2D.Dynamic;
             body.gravityScale = 1f;
             body.WakeUp();
         }
+        checkFallenTargets = true;
+        nextFallenTargetCheckTime = Time.time;
     }
 
 
@@ -1565,16 +2142,22 @@ private void CreateBackground()
 public sealed class WarfestTarget : MonoBehaviour
 {
     private WarfestGameController controller;
+    private Collider2D cachedCollider;
+    private Rigidbody2D cachedBody;
     private bool broken;
     private bool bomb;
 
     public bool IsBomb => bomb;
     public bool IsBroken => broken;
+    public Collider2D Collider => cachedCollider;
+    public Rigidbody2D Body => cachedBody;
 
     public void Initialize(WarfestGameController owner, bool isBomb = false)
     {
         controller = owner;
         bomb = isBomb;
+        cachedCollider = GetComponent<Collider2D>();
+        cachedBody = GetComponent<Rigidbody2D>();
     }
 
     public void Break()
@@ -1601,10 +2184,4 @@ public sealed class WarfestTarget : MonoBehaviour
         controller.DetonateBomb(this);
     }
 
-    private void Update()
-    {
-        if (broken || controller == null) return;
-        Vector3 position = transform.position;
-        if (position.y < -4.65f || Mathf.Abs(position.x) > 5.4f) BreakFromExplosion();
-    }
 }

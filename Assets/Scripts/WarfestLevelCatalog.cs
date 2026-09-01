@@ -65,13 +65,15 @@ public static partial class WarfestLevelCatalog
         public float width;
         public float visibleTopY;
         public float depth;
+        public float yawDegrees;
 
-        public ModelTableSpec(float x, float width, float visibleTopY, float depth = 2f)
+        public ModelTableSpec(float x, float width, float visibleTopY, float depth = 2f, float yawDegrees = 0f)
         {
             this.x = x;
             this.width = width;
             this.visibleTopY = visibleTopY;
             this.depth = depth;
+            this.yawDegrees = yawDegrees;
         }
     }
 

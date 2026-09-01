@@ -19,6 +19,12 @@ public sealed class WarfestBall : MonoBehaviour
     private bool spent;
     private ShotMode mode = ShotMode.Normal;
     private WarfestGameController controller;
+    private Collider2D ownCollider;
+
+    private void Awake()
+    {
+        ownCollider = GetComponent<Collider2D>();
+    }
 
     public void Initialize(Vector2 direction, float force, float lifetime,
         ShotMode shotMode = ShotMode.Normal, WarfestGameController owner = null)
@@ -40,7 +46,7 @@ public sealed class WarfestBall : MonoBehaviour
         Vector2 contactPoint = collision.contactCount > 0
             ? collision.GetContact(0).point
             : (Vector2)transform.position;
-        Rigidbody2D targetBody = target.GetComponent<Rigidbody2D>();
+        Rigidbody2D targetBody = target.Body;
 
         // Missile booster: hand off to the controller's blast, which breaks the struck block and
         // everything caught in its radius. Falls back to a plain break if fired without an owner.
@@ -62,10 +68,9 @@ public sealed class WarfestBall : MonoBehaviour
             {
                 targetBody.AddForceAtPosition(launchDirection * impactImpulse, contactPoint, ForceMode2D.Impulse);
             }
-            Collider2D self = GetComponent<Collider2D>();
-            if (self != null && collision.collider != null)
+            if (ownCollider != null && collision.collider != null)
             {
-                Physics2D.IgnoreCollision(self, collision.collider, true);
+                Physics2D.IgnoreCollision(ownCollider, collision.collider, true);
             }
             return; // not spent - the skull ball carries on
         }
@@ -82,5 +87,10 @@ public sealed class WarfestBall : MonoBehaviour
         }
 
         Destroy(gameObject);
+    }
+
+    private void OnDestroy()
+    {
+        if (controller != null) controller.NotifyBallDestroyed();
     }
 }

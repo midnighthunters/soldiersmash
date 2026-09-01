@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -17,6 +18,7 @@ public static class WarfestSession
     public const int DefaultBalls = 20;
     public const int LevelOneBalls = 60;
     public const int MaxLives = 5;
+    public const int LifeRefillSeconds = 30 * 60;
     public const int BoosterCount = 4;
 
     // Every booster starts the campaign with a small free stock so the flow is playable out of
@@ -24,6 +26,7 @@ public static class WarfestSession
     private const int DefaultBoosterStock = 3;
     private const string SelectedLevelKey = "Warfest.SelectedLevel";
     private const string LivesKey = "Warfest.Lives";
+    private const string NextLifeUtcKey = "Warfest.NextLifeUtc";
     private const string CampaignCompleteKey = "Warfest.CampaignComplete";
     private const string BoosterCountKeyPrefix = "Warfest.Booster.";
     private static int selectedLevel = -1;
@@ -39,12 +42,105 @@ public static class WarfestSession
     // UI can safely show "5" and switch its label to "FULL" when the player is topped up.
     public static int Lives
     {
-        get { return Mathf.Clamp(PlayerPrefs.GetInt(LivesKey, MaxLives), 0, MaxLives); }
+        get
+        {
+            RefreshLives();
+            return Mathf.Clamp(PlayerPrefs.GetInt(LivesKey, MaxLives), 0, MaxLives);
+        }
     }
 
     public static bool LivesFull
     {
         get { return Lives >= MaxLives; }
+    }
+
+    // Removes one life for a failed attempt. The first missing life starts a shared thirty-minute
+    // regeneration clock; losing another life does not reset progress toward the next refill.
+    public static bool ConsumeLife()
+    {
+        RefreshLives();
+        int lives = Mathf.Clamp(PlayerPrefs.GetInt(LivesKey, MaxLives), 0, MaxLives);
+        if (lives <= 0) return false;
+
+        lives--;
+        PlayerPrefs.SetInt(LivesKey, lives);
+        if (!TryGetNextLifeUtc(out long nextLifeUtc) || nextLifeUtc <= 0)
+        {
+            PlayerPrefs.SetString(NextLifeUtcKey, (UtcNowSeconds() + LifeRefillSeconds).ToString());
+        }
+        PlayerPrefs.Save();
+        return true;
+    }
+
+    // Seconds remaining until the next life is restored. Returns zero while the life bar is full.
+    public static int SecondsUntilNextLife
+    {
+        get
+        {
+            RefreshLives();
+            int lives = Mathf.Clamp(PlayerPrefs.GetInt(LivesKey, MaxLives), 0, MaxLives);
+            if (lives >= MaxLives || !TryGetNextLifeUtc(out long nextLifeUtc)) return 0;
+            return Mathf.Max(0, (int)Math.Min(int.MaxValue, nextLifeUtc - UtcNowSeconds()));
+        }
+    }
+
+    public static string LifeTimerText
+    {
+        get
+        {
+            int seconds = SecondsUntilNextLife;
+            return string.Format("{0:00}:{1:00}", seconds / 60, seconds % 60);
+        }
+    }
+
+    // Restores every life earned while the app was closed and keeps any partial progress toward
+    // the following life. This makes the timer independent of frame rate and device suspension.
+    public static void RefreshLives()
+    {
+        int lives = Mathf.Clamp(PlayerPrefs.GetInt(LivesKey, MaxLives), 0, MaxLives);
+        if (lives >= MaxLives)
+        {
+            if (PlayerPrefs.HasKey(NextLifeUtcKey))
+            {
+                PlayerPrefs.DeleteKey(NextLifeUtcKey);
+                PlayerPrefs.Save();
+            }
+            return;
+        }
+
+        long now = UtcNowSeconds();
+        if (!TryGetNextLifeUtc(out long nextLifeUtc) || nextLifeUtc <= 0)
+        {
+            PlayerPrefs.SetString(NextLifeUtcKey, (now + LifeRefillSeconds).ToString());
+            PlayerPrefs.Save();
+            return;
+        }
+
+        if (now < nextLifeUtc) return;
+
+        long elapsedIntervals = 1L + (now - nextLifeUtc) / LifeRefillSeconds;
+        int restored = (int)Math.Min(MaxLives - lives, elapsedIntervals);
+        lives += restored;
+        PlayerPrefs.SetInt(LivesKey, lives);
+        if (lives >= MaxLives)
+        {
+            PlayerPrefs.DeleteKey(NextLifeUtcKey);
+        }
+        else
+        {
+            PlayerPrefs.SetString(NextLifeUtcKey, (nextLifeUtc + restored * (long)LifeRefillSeconds).ToString());
+        }
+        PlayerPrefs.Save();
+    }
+
+    private static bool TryGetNextLifeUtc(out long nextLifeUtc)
+    {
+        return long.TryParse(PlayerPrefs.GetString(NextLifeUtcKey, string.Empty), out nextLifeUtc);
+    }
+
+    private static long UtcNowSeconds()
+    {
+        return DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     }
 
     // How many uses of a booster the player currently owns. Persisted per booster so a stock
@@ -91,8 +187,9 @@ public static class WarfestSession
     // The authored campaign scales its block budget from 20 (level 1) to 57 (level 100). Every
     // block is a target, so the ball allowance is derived from that budget with a generous,
     // stage-tapered margin above a competent clear (per the brief's shot-budget philosophy:
-    // ~25-40% extra early, easing toward ~15% late). This is a pre-playtest starting point.
-    public static int GetBallAllowance(int zeroBasedLevel)
+    // ~25-40% extra early, easing toward ~15% late). The live game uses half of that original
+    // allowance, rounded up so an odd allowance never costs an additional full shot.
+public static int GetBallAllowance(int zeroBasedLevel)
     {
         int levelIndex = Mathf.Clamp(zeroBasedLevel, 0, LevelCount - 1);
         int blocks = WarfestLevelCatalog.CampaignBlockCount(levelIndex);
@@ -100,7 +197,8 @@ public static class WarfestSession
             levelIndex < 10 ? 1.6f :
             levelIndex < 30 ? 1.4f :
             levelIndex < 60 ? 1.25f : 1.15f;
-        return Mathf.Clamp(Mathf.CeilToInt(blocks * factor) + 4, 20, 90);
+        int originalAllowance = Mathf.Clamp(Mathf.CeilToInt(blocks * factor) + 4, 20, 90);
+        return Mathf.CeilToInt(originalAllowance * 0.5f) + 6;
     }
 
 public static void SelectLevel(int zeroBasedLevel)
@@ -112,6 +210,8 @@ public static void SelectLevel(int zeroBasedLevel)
 
     public static void LoadLevel(int zeroBasedLevel)
     {
+        if (Lives <= 0) return;
+
         // Starting any real level means the player is back in the campaign, so clear the
         // "finished" flag in case they replayed the final level from a completed state.
         SetCampaignComplete(false);
