@@ -12,6 +12,8 @@ using UnityEngine.UI;
 public sealed class WarfestMainMenu : MonoBehaviour
 {
     private const string GeneratedCanvasName = "Main Menu Canvas";
+    private const string PrivacyPolicyUrl = "https://sites.google.com/view/ssmashprivacypolicy/home";
+    private const string TermsOfUseUrl = "https://sites.google.com/view/sstou/home";
 
     private static readonly Color Navy = new Color(0.08f, 0.16f, 0.24f, 1f);
     private static readonly Color DeepGreen = new Color(0.13f, 0.23f, 0.08f, 1f);
@@ -611,29 +613,35 @@ public sealed class WarfestMainMenu : MonoBehaviour
         Button backdropBtn = backdropObj.GetComponent<Button>();
         backdropBtn.onClick.AddListener(ToggleSettingsFlyout);
 
-        // Dialog container card
-        RectTransform card = CreateContainer(flyout, "Settings Card", new Vector2(0.5f, 0.50f), new Vector2(0.74f, 0.30f));
+        // Dialog container card (aspect ratio ~1.446 matching the frame sprite)
+        RectTransform card = CreateContainer(flyout, "Settings Card", new Vector2(0.5f, 0.50f), new Vector2(0.80f, 0.256f));
         CreateSheetImage(card, "Cream Frame", new Rect(8f, 540f, 441f, 305f), new Vector2(0.5f, 0.5f), Vector2.one);
 
-        // Title: "SETTINGS"
-        CreateOutlinedText(card, "Settings Title", "SETTINGS", 28, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.82f), new Vector2(0.85f, 0.22f), headingFont, DeepGreen, 2f);
+        // Title: "SETTINGS" - cleanly nested within the top tab
+        CreateOutlinedText(card, "Settings Title", "SETTINGS", 24, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.865f), new Vector2(0.70f, 0.12f), headingFont, DeepGreen, 2f);
 
-        // Sound Toggle Button
+        // Sound Toggle Button (prominent circular button, aligned symmetrically on left)
         Button sound = CreateAudioToggleButton(card, "Sound Toggle",
-            WarfestAudio.GetSoundIconSprite(), new Vector2(0.35f, 0.44f), new Vector2(0.24f, 0.44f), out soundButtonBackground);
+            WarfestAudio.GetSoundIconSprite(), new Vector2(0.34f, 0.550f), new Vector2(0.23f, 0.332f), out soundButtonBackground);
         sound.onClick.AddListener(ToggleSound);
-        CreateOutlinedText(card, "Sound Label", "SOUND", 16, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.35f, 0.16f), new Vector2(0.30f, 0.18f), bodyFont, Navy, 1.2f);
 
-        // Music Toggle Button
+        // Music Toggle Button (prominent circular button, aligned symmetrically on right)
         Button music = CreateAudioToggleButton(card, "Music Toggle",
-            WarfestAudio.GetMusicIconSprite(), new Vector2(0.65f, 0.44f), new Vector2(0.24f, 0.44f), out musicButtonBackground);
+            WarfestAudio.GetMusicIconSprite(), new Vector2(0.66f, 0.550f), new Vector2(0.23f, 0.332f), out musicButtonBackground);
         music.onClick.AddListener(ToggleMusic);
-        CreateOutlinedText(card, "Music Label", "MUSIC", 16, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.65f, 0.16f), new Vector2(0.30f, 0.18f), bodyFont, Navy, 1.2f);
 
-        settingsFlyout.SetActive(false);
+        // Legal Links: Privacy Policy & Terms of Use (symmetrically centered around middle dot)
+        CreateLinkButton(card, "Privacy Policy Link", "<b>Privacy Policy</b>",
+            PrivacyPolicyUrl, new Vector2(0.27f, 0.205f), new Vector2(0.38f, 0.15f), TextAnchor.MiddleRight);
+
+        CreateText(card, "Link Separator", "<b>•</b>", 16, new Color(Navy.r, Navy.g, Navy.b, 0.50f),
+            TextAnchor.MiddleCenter, new Vector2(0.50f, 0.205f), new Vector2(0.06f, 0.15f), bodyFont);
+
+        CreateLinkButton(card, "Terms of Use Link", "<b>Terms of Use</b>",
+            TermsOfUseUrl, new Vector2(0.73f, 0.205f), new Vector2(0.38f, 0.15f), TextAnchor.MiddleLeft);
+
+        settingsFlyout.SetActive(settingsOpen);
         RefreshSettingsButtons();
     }
 
@@ -663,6 +671,44 @@ public sealed class WarfestMainMenu : MonoBehaviour
         icon.color = Color.white;
         icon.preserveAspect = true;
         icon.raycastTarget = false;
+
+        return button;
+    }
+
+    private Button CreateLinkButton(Transform parent, string name, string labelText, string url,
+        Vector2 center, Vector2 size, TextAnchor textAlignment = TextAnchor.MiddleCenter)
+    {
+        GameObject gameObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+        gameObject.transform.SetParent(parent, false);
+        SetRect(gameObject.GetComponent<RectTransform>(), center, size);
+
+        Image hitGraphic = gameObject.GetComponent<Image>();
+        hitGraphic.color = Color.clear;
+        hitGraphic.raycastTarget = true;
+
+        Button button = gameObject.GetComponent<Button>();
+        button.targetGraphic = hitGraphic;
+        ColorBlock colors = button.colors;
+        colors.normalColor = Color.clear;
+        colors.highlightedColor = new Color(0.08f, 0.16f, 0.24f, 0.08f);
+        colors.pressedColor = new Color(0.08f, 0.16f, 0.24f, 0.18f);
+        colors.selectedColor = colors.highlightedColor;
+        colors.fadeDuration = 0.06f;
+        button.colors = colors;
+
+        button.onClick.AddListener(() =>
+        {
+            if (!string.IsNullOrEmpty(url))
+            {
+                Application.OpenURL(url);
+            }
+        });
+
+        Text text = CreateText(gameObject.transform, "Label", labelText, 16, Navy,
+            textAlignment, new Vector2(0.5f, 0.5f), Vector2.one, bodyFont);
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.raycastTarget = false;
 
         return button;
     }
