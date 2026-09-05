@@ -27,3 +27,6 @@
 Assets/QA/LevelScreenshots/
 Assets/Screenshots/
 Assets/QA/
+MONSTERDOKU/
+*.p8
+*.mobileprovision
