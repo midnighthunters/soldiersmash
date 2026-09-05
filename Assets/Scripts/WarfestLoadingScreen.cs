@@ -246,7 +246,7 @@ public sealed class WarfestLoadingScreen : MonoBehaviour
         tipText.color = new Color(0.90f, 0.95f, 1f, 0.85f);
         tipText.alignment = TextAnchor.MiddleCenter;
         tipText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        tipText.verticalOverflow = VerticalWrapMode.Truncate;
+        tipText.verticalOverflow = VerticalWrapMode.Overflow;
         tipText.raycastTarget = false;
     }
 

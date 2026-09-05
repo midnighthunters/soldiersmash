@@ -152,7 +152,9 @@ public sealed class WarfestMainMenu : MonoBehaviour
     {
         Teardown();
 
-        fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (headingFont == null) headingFont = WarfestFontResolver.HeadingFont;
+        if (bodyFont == null) bodyFont = WarfestFontResolver.BodyFont;
+        fallbackFont = WarfestFontResolver.FallbackFont;
         panelSheet = Resources.Load<Texture2D>("pnl");
 
         Camera mainCamera = Camera.main;
@@ -610,16 +612,17 @@ public sealed class WarfestMainMenu : MonoBehaviour
         SetRect(gameObject.GetComponent<RectTransform>(), center, size);
 
         Text text = gameObject.GetComponent<Text>();
-        text.font = requestedFont != null ? requestedFont : fallbackFont;
+        Font chosenFont = requestedFont != null ? requestedFont : (headingFont != null ? headingFont : WarfestFontResolver.HeadingFont);
+        text.font = chosenFont;
         text.text = value;
         text.fontSize = fontSize;
         text.resizeTextForBestFit = true;
-        text.resizeTextMinSize = Mathf.Max(10, fontSize - 10);
+        text.resizeTextMinSize = 8;
         text.resizeTextMaxSize = fontSize;
         text.color = color;
         text.alignment = alignment;
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Truncate;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
         text.raycastTarget = false;
         return text;
     }

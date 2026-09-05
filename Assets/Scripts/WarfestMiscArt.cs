@@ -265,16 +265,7 @@ public static class WarfestMiscArt
 
     public static Font GetCartoonFont()
     {
-        Font[] fonts = Resources.FindObjectsOfTypeAll<Font>();
-        foreach (var f in fonts)
-        {
-            if (f.name == "LuckiestGuy-Regular") return f;
-        }
-        foreach (var f in fonts)
-        {
-            if (f.name == "Fredoka-Bold") return f;
-        }
-        return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        return WarfestFontResolver.HeadingFont;
     }
 
     public static Sprite LoadSprite(string resourcePath)

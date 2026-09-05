@@ -198,9 +198,9 @@ public sealed class WarfestGameController : MonoBehaviour
         QualitySettings.vSyncCount = 0;
         Time.fixedDeltaTime = Mathf.Min(0.04f, 0.02f * Mathf.Max(1f, Time.timeScale));
 
-        font = bodyFont != null ? bodyFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        if (headingFont == null) headingFont = font;
-        if (bodyFont == null) bodyFont = font;
+        if (headingFont == null) headingFont = WarfestFontResolver.HeadingFont;
+        if (bodyFont == null) bodyFont = WarfestFontResolver.BodyFont;
+        font = bodyFont != null ? bodyFont : WarfestFontResolver.HeadingFont;
         soundEnabled = WarfestAudio.SoundEnabled;
         musicEnabled = WarfestAudio.MusicEnabled;
         WarfestSession.HasShownSplash = true;
@@ -2597,17 +2597,18 @@ private Text CreateText(Transform parent, string name, string value, int size, C
         gameObject.transform.SetParent(parent, false);
         ApplyRect(gameObject.GetComponent<RectTransform>(), parent, center, dimensions);
         Text text = gameObject.GetComponent<Text>();
-        text.font = typeface != null ? typeface : font;
+        Font chosenFont = typeface != null ? typeface : (headingFont != null ? headingFont : WarfestFontResolver.HeadingFont);
+        text.font = chosenFont;
         text.text = value;
         text.fontSize = size;
         text.resizeTextForBestFit = true;
-        text.resizeTextMinSize = Mathf.Max(10, size - 12);
+        text.resizeTextMinSize = 8;
         text.resizeTextMaxSize = size;
         text.color = color;
         text.alignment = alignment;
         text.fontStyle = FontStyle.Bold;
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Truncate;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
         return text;
     }
 
@@ -2719,9 +2720,9 @@ private void CreateBackground()
 
     public void BuildEditModePreview(int levelIndex)
     {
-        font = bodyFont != null ? bodyFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        if (headingFont == null) headingFont = font;
-        if (bodyFont == null) bodyFont = font;
+        if (headingFont == null) headingFont = WarfestFontResolver.HeadingFont;
+        if (bodyFont == null) bodyFont = WarfestFontResolver.BodyFont;
+        font = bodyFont != null ? bodyFont : WarfestFontResolver.HeadingFont;
         LoadOriginalSprites();
         EnsureEventSystem();
         EnsureCamera();

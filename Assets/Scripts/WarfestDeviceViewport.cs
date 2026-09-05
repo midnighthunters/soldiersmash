@@ -84,8 +84,19 @@ public sealed class WarfestViewportManager : MonoBehaviour
     private int lastScreenHeight = -1;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    public static void EnforcePortraitOrientation()
+    {
+        Screen.orientation = ScreenOrientation.Portrait;
+        Screen.autorotateToPortrait = true;
+        Screen.autorotateToPortraitUpsideDown = true;
+        Screen.autorotateToLandscapeLeft = false;
+        Screen.autorotateToLandscapeRight = false;
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     public static void EnsureManagerExists()
     {
+        EnforcePortraitOrientation();
         if (instance != null) return;
         var existing = FindAnyObjectByType<WarfestViewportManager>();
         if (existing != null)
@@ -128,6 +139,7 @@ public sealed class WarfestViewportManager : MonoBehaviour
             return;
         }
 
+        EnforcePortraitOrientation();
         EnsureComponents();
         ApplyViewport();
     }

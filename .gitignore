@@ -13,7 +13,9 @@
 /[Rr]ecordings/
 
 # Local Unity resources
-/Assets/Resources/
+/Assets/Resources/*
+!/Assets/Resources/Fonts/
+!/Assets/Resources/Fonts.meta
 /Assets/[Rr]esources.meta
 
 # Local IDE and editor data
