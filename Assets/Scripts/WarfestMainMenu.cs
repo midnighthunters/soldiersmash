@@ -32,6 +32,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
     private GameObject createdEventSystem;
     private Text lifeCountText;
     private Text lifeStatusText;
+    private Text coinValueText;
     private Button deployButton;
     private int displayedLives = -1;
     private int displayedLifeSeconds = -1;
@@ -41,6 +42,13 @@ public sealed class WarfestMainMenu : MonoBehaviour
     private Image soundButtonBackground;
     private Image musicButtonBackground;
     private bool settingsOpen;
+    private GameObject buyLivesFlyout;
+    private Button buyLivesButton;
+    private Image buyLivesButtonBg;
+    private Text buyLivesButtonText;
+    private Image buyLivesCoinIcon;
+    private Text buyLivesStatusText;
+    private bool buyLivesOpen;
 
     private void OnEnable()
     {
@@ -186,6 +194,19 @@ public sealed class WarfestMainMenu : MonoBehaviour
         soundButtonBackground = null;
         musicButtonBackground = null;
         settingsOpen = false;
+
+        if (buyLivesFlyout != null)
+        {
+            SafeDestroy(buyLivesFlyout);
+            buyLivesFlyout = null;
+        }
+        coinValueText = null;
+        buyLivesButton = null;
+        buyLivesButtonBg = null;
+        buyLivesButtonText = null;
+        buyLivesCoinIcon = null;
+        buyLivesStatusText = null;
+        buyLivesOpen = false;
     }
 
     private static void SafeDestroy(Object target)
@@ -238,6 +259,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
         BuildMissionCard(level, balls);
         BuildBottomNavigation();
         BuildSettingsFlyout();
+        BuildBuyLivesPanel();
     }
 
     private void CreateBackground(RectTransform root)
@@ -274,13 +296,14 @@ public sealed class WarfestMainMenu : MonoBehaviour
             new Vector2(0.06f, 0.50f), new Vector2(0.38f, 1.12f));
 
         // Coin Value: Crisp dark navy font without outline, centered in cream area between coin and + button
-        CreateText(coinBar.transform, "Coin Value", (level.number * 125).ToString(), 22, Navy,
+        coinValueText = CreateText(coinBar.transform, "Coin Value", WarfestSession.Coins.ToString(), 22, Navy,
             TextAnchor.MiddleCenter, new Vector2(0.465f, 0.50f), new Vector2(0.40f, 0.65f), bodyFont);
 
-        // 3. Lives Bar: Pill container at topBarY
+        // 3. Lives Bar: Pill container at topBarY - tap to open Buy Lives panel
         int lives = WarfestSession.Lives;
-        Image livesBar = CreateSheetImage(safeAreaRoot, "Lives Bar", new Rect(775f, 43f, 276f, 119f),
+        Button livesBar = CreateSheetButton(safeAreaRoot, "Lives Bar", new Rect(775f, 43f, 276f, 119f),
             new Vector2(0.685f, topBarY), new Vector2(0.265f, barHeight));
+        livesBar.onClick.AddListener(OpenBuyLivesPanel);
         lifeCountText = CreateOutlinedText(livesBar.transform, "Life Count", lives.ToString(), 24, Cream,
             TextAnchor.MiddleCenter, new Vector2(0.208f, 0.510f), new Vector2(0.28f, 0.65f), headingFont, Navy, 1.5f);
         lifeStatusText = CreateText(livesBar.transform, "Life Status", WarfestSession.LivesFull ? "FULL" : WarfestSession.LifeTimerText, 17, DeepGreen,
@@ -338,6 +361,11 @@ public sealed class WarfestMainMenu : MonoBehaviour
             deploy.interactable = WarfestSession.Lives > 0;
             deploy.onClick.AddListener(() =>
             {
+                if (WarfestSession.Lives <= 0)
+                {
+                    OpenBuyLivesPanel();
+                    return;
+                }
                 StopMenuAudio();
                 WarfestLoadingScreen.ShowAndLoad(WarfestSession.SelectedLevel);
             });
@@ -371,6 +399,16 @@ public sealed class WarfestMainMenu : MonoBehaviour
         if (deployButton != null && !WarfestSession.CampaignComplete)
         {
             deployButton.interactable = lives > 0;
+        }
+        RefreshCoinHud();
+        RefreshBuyLivesPanelState();
+    }
+
+    private void RefreshCoinHud()
+    {
+        if (coinValueText != null)
+        {
+            coinValueText.text = WarfestSession.Coins.ToString();
         }
     }
 
@@ -621,6 +659,18 @@ public sealed class WarfestMainMenu : MonoBehaviour
         CreateOutlinedText(card, "Settings Title", "SETTINGS", 24, Cream,
             TextAnchor.MiddleCenter, new Vector2(0.5f, 0.865f), new Vector2(0.70f, 0.12f), headingFont, DeepGreen, 2f);
 
+        // Close "✕" button in top-right tab
+        GameObject closeObj = new GameObject("Close Button", typeof(RectTransform), typeof(Image), typeof(Button));
+        closeObj.transform.SetParent(card, false);
+        SetRect(closeObj.GetComponent<RectTransform>(), new Vector2(0.90f, 0.865f), new Vector2(0.12f, 0.12f));
+        Image closeImg = closeObj.GetComponent<Image>();
+        closeImg.color = Color.clear;
+        Button closeBtn = closeObj.GetComponent<Button>();
+        closeBtn.targetGraphic = closeImg;
+        closeBtn.onClick.AddListener(ToggleSettingsFlyout);
+        CreateOutlinedText(closeObj.transform, "Close Text", "✕", 18, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), Vector2.one, headingFont, DeepGreen, 1.5f);
+
         // Sound Toggle Button (prominent circular button, aligned symmetrically on left)
         Button sound = CreateAudioToggleButton(card, "Sound Toggle",
             WarfestAudio.GetSoundIconSprite(), new Vector2(0.34f, 0.550f), new Vector2(0.23f, 0.332f), out soundButtonBackground);
@@ -716,6 +766,10 @@ public sealed class WarfestMainMenu : MonoBehaviour
     private void ToggleSettingsFlyout()
     {
         if (settingsFlyout == null) return;
+        if (!settingsOpen && buyLivesOpen)
+        {
+            CloseBuyLivesPanel();
+        }
         settingsOpen = !settingsOpen;
         settingsFlyout.SetActive(settingsOpen);
         if (settingsOpen)
@@ -754,5 +808,142 @@ public sealed class WarfestMainMenu : MonoBehaviour
                 ? WarfestAudio.GetSettingsEnabledSprite()
                 : WarfestAudio.GetSettingsDisabledSprite();
         }
+    }
+
+    private void BuildBuyLivesPanel()
+    {
+        GameObject flyoutObj = new GameObject("Buy Lives Flyout", typeof(RectTransform));
+        flyoutObj.transform.SetParent(safeAreaRoot, false);
+        RectTransform flyout = flyoutObj.GetComponent<RectTransform>();
+        SetRect(flyout, new Vector2(0.5f, 0.5f), Vector2.one);
+        buyLivesFlyout = flyoutObj;
+
+        // Dimmed backdrop tap to close
+        GameObject backdropObj = new GameObject("Buy Lives Backdrop", typeof(RectTransform), typeof(Image), typeof(Button));
+        backdropObj.transform.SetParent(flyout, false);
+        SetRect(backdropObj.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), Vector2.one);
+        Image backdropImage = backdropObj.GetComponent<Image>();
+        backdropImage.color = new Color(0.02f, 0.05f, 0.10f, 0.65f);
+        Button backdropBtn = backdropObj.GetComponent<Button>();
+        backdropBtn.onClick.AddListener(CloseBuyLivesPanel);
+
+        // Dialog container card (matching cream frame 441:305 aspect ratio)
+        RectTransform card = CreateContainer(flyout, "Buy Lives Card", new Vector2(0.5f, 0.50f), new Vector2(0.80f, 0.256f));
+        CreateSheetImage(card, "Cream Frame", new Rect(8f, 540f, 441f, 305f), new Vector2(0.5f, 0.5f), Vector2.one);
+
+        // Title: "LIVES" - cleanly nested within top tab
+        CreateOutlinedText(card, "Buy Lives Title", "LIVES", 24, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.865f), new Vector2(0.70f, 0.12f), headingFont, DeepGreen, 2f);
+
+        // Close "✕" button in top-right tab
+        GameObject closeObj = new GameObject("Close Button", typeof(RectTransform), typeof(Image), typeof(Button));
+        closeObj.transform.SetParent(card, false);
+        SetRect(closeObj.GetComponent<RectTransform>(), new Vector2(0.90f, 0.865f), new Vector2(0.12f, 0.12f));
+        Image closeImg = closeObj.GetComponent<Image>();
+        closeImg.color = Color.clear;
+        Button closeBtn = closeObj.GetComponent<Button>();
+        closeBtn.targetGraphic = closeImg;
+        closeBtn.onClick.AddListener(CloseBuyLivesPanel);
+        CreateOutlinedText(closeObj.transform, "Close Text", "✕", 18, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), Vector2.one, headingFont, DeepGreen, 1.5f);
+
+        // Text: "Buy 2 lives"
+        CreateOutlinedText(card, "Prompt Text", "Buy 2 lives", 28, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.620f), new Vector2(0.85f, 0.18f), headingFont, DeepGreen, 2.2f);
+
+        // Button: Green button with "200 coins"
+        Button buyBtn = CreateSheetButton(card, "Buy Button", new Rect(443f, 560f, 410f, 174f),
+            new Vector2(0.5f, 0.320f), new Vector2(0.58f, 0.260f));
+        buyLivesButton = buyBtn;
+        buyLivesButtonBg = buyBtn.GetComponent<Image>();
+        buyBtn.onClick.AddListener(OnBuyLivesClicked);
+
+        // Coin Icon inside button (left side)
+        buyLivesCoinIcon = CreateSheetImage(buyBtn.transform, "Coin Icon", new Rect(384f, 38f, 132f, 132f),
+            new Vector2(0.22f, 0.50f), new Vector2(0.20f, 0.60f));
+
+        // Button Text: "200 COINS"
+        buyLivesButtonText = CreateOutlinedText(buyBtn.transform, "Cost Text", "200 COINS", 20, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.60f, 0.50f), new Vector2(0.64f, 0.60f), headingFont, DeepGreen, 1.8f);
+
+        // Status text below button (e.g. "NOT ENOUGH COINS" or current balance)
+        buyLivesStatusText = CreateText(card, "Status Text", "", 14, new Color(Navy.r, Navy.g, Navy.b, 0.65f),
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.120f), new Vector2(0.85f, 0.12f), bodyFont);
+
+        buyLivesFlyout.SetActive(buyLivesOpen);
+        RefreshBuyLivesPanelState();
+    }
+
+    private void OnBuyLivesClicked()
+    {
+        if (WarfestSession.BuyTwoLives())
+        {
+            displayedLives = -1; // force HUD refresh
+            RefreshLifeHud();
+            RefreshCoinHud();
+            RefreshBuyLivesPanelState();
+        }
+    }
+
+    private void RefreshBuyLivesPanelState()
+    {
+        if (buyLivesButton == null) return;
+
+        bool hasCoins = WarfestSession.Coins >= WarfestSession.BuyTwoLivesCoinCost;
+        bool canBuy = WarfestSession.Lives < WarfestSession.MaxLives && hasCoins;
+
+        buyLivesButton.interactable = canBuy;
+
+        if (buyLivesButtonBg != null)
+        {
+            buyLivesButtonBg.color = canBuy ? Color.white : new Color(0.52f, 0.55f, 0.52f, 1f);
+        }
+        if (buyLivesButtonText != null)
+        {
+            buyLivesButtonText.color = canBuy ? Cream : new Color(0.85f, 0.85f, 0.85f, 0.85f);
+        }
+        if (buyLivesCoinIcon != null)
+        {
+            buyLivesCoinIcon.color = canBuy ? Color.white : new Color(0.70f, 0.70f, 0.70f, 0.8f);
+        }
+
+        if (buyLivesStatusText != null)
+        {
+            if (WarfestSession.Lives >= WarfestSession.MaxLives)
+            {
+                buyLivesStatusText.text = "LIVES ARE FULL";
+                buyLivesStatusText.color = DeepGreen;
+            }
+            else if (!hasCoins)
+            {
+                buyLivesStatusText.text = "NOT ENOUGH COINS (" + WarfestSession.Coins + " / 200)";
+                buyLivesStatusText.color = new Color(0.78f, 0.18f, 0.15f, 1f);
+            }
+            else
+            {
+                buyLivesStatusText.text = "Coins Available: " + WarfestSession.Coins;
+                buyLivesStatusText.color = new Color(0.20f, 0.35f, 0.22f, 1f);
+            }
+        }
+    }
+
+    public void OpenBuyLivesPanel()
+    {
+        if (settingsOpen)
+        {
+            settingsOpen = false;
+            if (settingsFlyout != null) settingsFlyout.SetActive(false);
+        }
+        if (buyLivesFlyout == null) return;
+        buyLivesOpen = true;
+        RefreshBuyLivesPanelState();
+        buyLivesFlyout.SetActive(true);
+    }
+
+    public void CloseBuyLivesPanel()
+    {
+        if (buyLivesFlyout == null) return;
+        buyLivesOpen = false;
+        buyLivesFlyout.SetActive(false);
     }
 }

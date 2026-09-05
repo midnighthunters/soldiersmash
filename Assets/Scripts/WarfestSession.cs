@@ -25,13 +25,78 @@ public static class WarfestSession
     // Every booster starts the campaign with a small free stock so the flow is playable out of
     // the box. A store / rewarded-ad hook would top these up in a shipping build.
     private const int DefaultBoosterStock = 3;
+    public const int BuyTwoLivesCoinCost = 200;
     private const string SelectedLevelKey = "Warfest.SelectedLevel";
     private const string LivesKey = "Warfest.Lives";
     private const string NextLifeUtcKey = "Warfest.NextLifeUtc";
+    private const string CoinsKey = "Warfest.Coins";
     private const string CampaignCompleteKey = "Warfest.CampaignComplete";
     private const string BoosterCountKeyPrefix = "Warfest.Booster.";
     private static int selectedLevel = -1;
     public static bool HasShownSplash { get; set; } = false;
+
+    // Persisted player coin balance. Initialized with at least 250 coins.
+    public static int Coins
+    {
+        get
+        {
+            if (!PlayerPrefs.HasKey(CoinsKey))
+            {
+                int defaultBalance = Mathf.Max(250, (SelectedLevel + 1) * 125);
+                PlayerPrefs.SetInt(CoinsKey, defaultBalance);
+                PlayerPrefs.Save();
+            }
+            return Mathf.Max(0, PlayerPrefs.GetInt(CoinsKey, 250));
+        }
+        set
+        {
+            PlayerPrefs.SetInt(CoinsKey, Mathf.Max(0, value));
+            PlayerPrefs.Save();
+        }
+    }
+
+    public static bool HasCoins(int amount)
+    {
+        return Coins >= amount;
+    }
+
+    public static bool DeductCoins(int amount)
+    {
+        if (Coins < amount) return false;
+        Coins -= amount;
+        return true;
+    }
+
+    public static void AddCoins(int amount)
+    {
+        Coins += Mathf.Max(0, amount);
+    }
+
+    public static void AddLives(int amount)
+    {
+        RefreshLives();
+        int lives = Mathf.Clamp(PlayerPrefs.GetInt(LivesKey, MaxLives), 0, MaxLives);
+        lives = Mathf.Clamp(lives + amount, 0, MaxLives);
+        PlayerPrefs.SetInt(LivesKey, lives);
+        if (lives >= MaxLives)
+        {
+            PlayerPrefs.DeleteKey(NextLifeUtcKey);
+        }
+        PlayerPrefs.Save();
+    }
+
+    public static bool CanBuyTwoLives()
+    {
+        return Lives < MaxLives && Coins >= BuyTwoLivesCoinCost;
+    }
+
+    public static bool BuyTwoLives()
+    {
+        if (!CanBuyTwoLives()) return false;
+        if (!DeductCoins(BuyTwoLivesCoinCost)) return false;
+        AddLives(2);
+        return true;
+    }
 
     // True once the player has cleared the final level. The menu uses this to swap the
     // "Deploy Mission" card into a disabled "Coming Soon" state instead of replaying level 100.
@@ -247,6 +312,7 @@ public static void SelectLevel(int zeroBasedLevel)
     public static void CompleteLevel(int zeroBasedLevel)
     {
         WarfestAudio.StopGameplayAudio();
+        AddCoins(125);
         int nextLevel = zeroBasedLevel + 1;
         if (nextLevel >= LevelCount)
         {
