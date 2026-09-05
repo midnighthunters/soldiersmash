@@ -17,6 +17,7 @@ public sealed class WarfestGameController : MonoBehaviour
     private readonly List<Rigidbody2D> blockBodies = new List<Rigidbody2D>();
     private readonly List<Collider2D> blockColliders = new List<Collider2D>();
     private readonly List<WarfestTarget> blockTargets = new List<WarfestTarget>();
+    public List<WarfestTarget> BlockTargets => blockTargets;
     private readonly Collider2D[] targetOverlapResults = new Collider2D[16];
     private readonly Collider2D[] blastOverlapResults = new Collider2D[64];
     private readonly HashSet<Rigidbody2D> pushedBodies = new HashSet<Rigidbody2D>();
@@ -61,6 +62,55 @@ public sealed class WarfestGameController : MonoBehaviour
     private readonly List<int> blockDepthLayers = new List<int>();
     private Sprite[] blockSprites;
     private Sprite[] boosterSprites;
+
+    // Persistent static caches to eliminate redundant Resources.Load, Material instantiation, and procedural synthesis
+    private static bool s_spritesLoaded;
+    private static Sprite s_pistolSprite;
+    private static Sprite s_pistolBaseSprite;
+    private static Sprite s_backgroundSprite;
+    private static Sprite s_ballsPanelSprite;
+    private static Sprite s_levelPanelSprite;
+    private static Sprite s_blueLabelSprite;
+    private static Sprite s_settingsPanelSprite;
+    private static Sprite s_leaveIconSprite;
+    private static Sprite s_soundIconSprite;
+    private static Sprite s_musicIconSprite;
+    private static Sprite s_settingsDisabledSprite;
+    private static Sprite s_settingsEnabledSprite;
+    private static Sprite[] s_blockSprites;
+    private static Sprite[] s_boosterSprites;
+    private static GameObject[] s_boxModelPrefabs;
+    private static Texture2D[] s_boxModelTextures;
+    private static Material[] s_boxModelMaterials;
+    private static GameObject s_tableModelPrefab;
+    private static Material s_tableModelMaterial;
+    private static GameObject s_ballModelPrefab;
+    private static Material s_ballModelMaterial;
+    private static Sprite s_tableSprite;
+    private static Material s_aimLineMaterial;
+    private static Material s_skullBallMaterial;
+    private static Sprite s_explosionSprite;
+    private static Material s_explosionParticleMaterial;
+    private static AudioClip s_shootClip;
+    private static AudioClip s_blockPopClip;
+    private static AudioClip s_musicClip;
+    private static bool s_ballVisualConfigured;
+    private static Vector3 s_ballVisualScaleUnit;
+    private static Vector3 s_ballVisualCenterOffsetUnit;
+
+    // High-performance explosion VFX pool
+    private sealed class ExplosionVfxItem
+    {
+        public GameObject rootObject;
+        public Transform flashTransform;
+        public SpriteRenderer flashRenderer;
+        public ParticleSystem sparks;
+        public Coroutine flashRoutine;
+    }
+    private readonly List<ExplosionVfxItem> explosionPool = new List<ExplosionVfxItem>();
+    private int nextExplosionPoolIndex;
+    private const int ExplosionPoolCapacity = 6;
+
     private int ballCapacity;
     private int remainingBalls;
     private int targetsRemaining;
@@ -136,11 +186,13 @@ public sealed class WarfestGameController : MonoBehaviour
     private float nextBoosterUiUpdateTime;
     private int aimCollisionMask = ~0;
 
-private void Start()
+    private void Start()
     {
-        // Unity defaults to 30 FPS on many mobile targets when no explicit frame rate is set.
-        // The game is lightweight enough to target a visibly smoother 60 FPS.
-        Application.targetFrameRate = 60;
+        Application.runInBackground = true;
+        Application.targetFrameRate = 120;
+        QualitySettings.vSyncCount = 0;
+        Time.fixedDeltaTime = Mathf.Min(0.04f, 0.02f * Mathf.Max(1f, Time.timeScale));
+
         font = bodyFont != null ? bodyFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         if (headingFont == null) headingFont = font;
         if (bodyFont == null) bodyFont = font;
@@ -160,8 +212,35 @@ private void Start()
         ApplyAudioPreferences();
     }
 
-private void LoadOriginalSprites()
+    private void LoadOriginalSprites()
     {
+        if (s_spritesLoaded)
+        {
+            pistolSprite = s_pistolSprite;
+            pistolBaseSprite = s_pistolBaseSprite;
+            backgroundSprite = s_backgroundSprite;
+            ballsPanelSprite = s_ballsPanelSprite;
+            levelPanelSprite = s_levelPanelSprite;
+            blueLabelSprite = s_blueLabelSprite;
+            settingsPanelSprite = s_settingsPanelSprite;
+            leaveIconSprite = s_leaveIconSprite;
+            soundIconSprite = s_soundIconSprite;
+            musicIconSprite = s_musicIconSprite;
+            settingsDisabledSprite = s_settingsDisabledSprite;
+            settingsEnabledSprite = s_settingsEnabledSprite;
+            blockSprites = s_blockSprites;
+            boosterSprites = s_boosterSprites;
+            boxModelPrefabs = s_boxModelPrefabs;
+            boxModelTextures = s_boxModelTextures;
+            boxModelMaterials = s_boxModelMaterials;
+            tableModelPrefab = s_tableModelPrefab;
+            tableModelMaterial = s_tableModelMaterial;
+            ballModelPrefab = s_ballModelPrefab;
+            ballModelMaterial = s_ballModelMaterial;
+            tableSprite = s_tableSprite;
+            return;
+        }
+
         Sprite[] pistolSprites = Resources.LoadAll<Sprite>("new_gun");
         Sprite[] tables = Resources.LoadAll<Sprite>("table");
 
@@ -179,9 +258,6 @@ private void LoadOriginalSprites()
         Texture2D panelTexture = Resources.Load<Texture2D>("panel");
         if (panelTexture != null && panelTexture.width >= 1500 && panelTexture.height >= 1000)
         {
-            // Pixel rectangles are authored from the transparent panel spritesheet. Sprite.Create
-            // uses a bottom-left origin, while the source artwork was measured from the top-left.
-            // Scale the crop coordinates if Unity applies NPOT resizing on another platform.
             float panelScaleX = panelTexture.width / 1536f;
             float panelScaleY = panelTexture.height / 1024f;
             ballsPanelSprite = CreateSheetSprite(panelTexture, ScaleSheetRect(new Rect(35f, 426f, 480f, 431f), panelScaleX, panelScaleY), "Balls Panel");
@@ -206,9 +282,6 @@ private void LoadOriginalSprites()
         if (pistolSprite == null && pistolSprites.Length > 0) pistolSprite = pistolSprites[0];
         if (pistolBaseSprite == null && pistolSprites.Length > 1) pistolBaseSprite = pistolSprites[1];
 
-        // Canonical gameplay palette. The index MUST match the variant constants in
-        // WarfestLevelCatalog (BOX=0, BOX2=1, BOX3=2, LONG_BOX=3, LONG_BOX2=4, SOLDIER=5,
-        // CANNISTER=6, BOMB=7, KING=8). Every authored military set piece is built from these.
         string[] modelFolders = { "box", "box2", "box3", "long_box", "long_box2", "soldier", "cannister", "bomb", "king" };
         boxModelPrefabs = new GameObject[modelFolders.Length];
         boxModelTextures = new Texture2D[modelFolders.Length];
@@ -228,6 +301,30 @@ private void LoadOriginalSprites()
         ballModelPrefab = Resources.Load<GameObject>("ball/base_basic_shaded");
         ballModelMaterial = CreateBrightModelMaterial(Resources.Load<Texture2D>("ball/shaded"), "Warfest Projectile Ball");
         tableSprite = tables.Length > 0 ? tables[0] : null;
+
+        s_pistolSprite = pistolSprite;
+        s_pistolBaseSprite = pistolBaseSprite;
+        s_backgroundSprite = backgroundSprite;
+        s_ballsPanelSprite = ballsPanelSprite;
+        s_levelPanelSprite = levelPanelSprite;
+        s_blueLabelSprite = blueLabelSprite;
+        s_settingsPanelSprite = settingsPanelSprite;
+        s_leaveIconSprite = leaveIconSprite;
+        s_soundIconSprite = soundIconSprite;
+        s_musicIconSprite = musicIconSprite;
+        s_settingsDisabledSprite = settingsDisabledSprite;
+        s_settingsEnabledSprite = settingsEnabledSprite;
+        s_blockSprites = blockSprites;
+        s_boosterSprites = boosterSprites;
+        s_boxModelPrefabs = boxModelPrefabs;
+        s_boxModelTextures = boxModelTextures;
+        s_boxModelMaterials = boxModelMaterials;
+        s_tableModelPrefab = tableModelPrefab;
+        s_tableModelMaterial = tableModelMaterial;
+        s_ballModelPrefab = ballModelPrefab;
+        s_ballModelMaterial = ballModelMaterial;
+        s_tableSprite = tableSprite;
+        s_spritesLoaded = true;
 
         if (pistolSprite == null || pistolBaseSprite == null || tableSprite == null || blockSprites == null || blockSprites.Length == 0)
         {
@@ -355,6 +452,15 @@ private static float GetModelMass(int variant)
 
     private void Update()
     {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.QueuePlayerLoopUpdate();
+#endif
+        float targetFixedDelta = Mathf.Min(0.04f, 0.02f * Mathf.Max(1f, Time.timeScale));
+        if (Mathf.Abs(Time.fixedDeltaTime - targetFixedDelta) > 0.0001f)
+        {
+            Time.fixedDeltaTime = targetFixedDelta;
+        }
+
         ApplyCanvasScale();
         ApplySafeArea();
         UpdateRecoil();
@@ -453,7 +559,19 @@ private static float GetModelMass(int variant)
 
     private void EnsureEventSystem()
     {
-        if (EventSystem.current != null) return;
+        var existing = FindObjectsByType<EventSystem>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        if (existing != null && existing.Length > 1)
+        {
+            for (int i = 1; i < existing.Length; i++)
+            {
+                if (existing[i] != null && existing[i].gameObject != null)
+                {
+                    Destroy(existing[i].gameObject);
+                }
+            }
+            return;
+        }
+        if ((existing != null && existing.Length == 1) || EventSystem.current != null) return;
         new GameObject("EventSystem", typeof(EventSystem), typeof(UnityEngine.InputSystem.UI.InputSystemUIInputModule));
     }
 
@@ -484,6 +602,8 @@ private void EnsureCamera()
 
     private void ClearExistingWorld()
     {
+        explosionPool.Clear();
+        nextExplosionPoolIndex = 0;
         UnityEngine.SceneManagement.Scene activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
         if (!activeScene.isLoaded) return;
         GameObject[] roots = activeScene.GetRootGameObjects();
@@ -817,9 +937,13 @@ private void CreatePistol()
         aimLine.startWidth = 0.10f;
         aimLine.endWidth = 0.10f;
 
-        Shader lineShader = Shader.Find("Sprites/Default");
-        if (lineShader == null) lineShader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (lineShader != null) aimLine.material = new Material(lineShader);
+        if (s_aimLineMaterial == null)
+        {
+            Shader lineShader = Shader.Find("Sprites/Default");
+            if (lineShader == null) lineShader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (lineShader != null) s_aimLineMaterial = new Material(lineShader) { name = "Warfest Aim Line" };
+        }
+        if (s_aimLineMaterial != null) aimLine.sharedMaterial = s_aimLineMaterial;
 
         aimLine.startColor = new Color(1f, 0.95f, 0.35f, 0.90f);
         aimLine.endColor = new Color(1f, 0.95f, 0.35f, 0.10f);
@@ -1046,13 +1170,25 @@ private void Fire()
             visual.transform.localPosition = Vector3.zero;
             visual.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
             ApplyModelMaterial(visual, piercing ? GetSkullBallMaterial() : ballModelMaterial);
-            Bounds sourceBounds = GetModelBounds(visual);
-            float diameter = radius * 2f;
-            float visualScale = diameter / Mathf.Max(sourceBounds.size.x, sourceBounds.size.y);
-            visual.transform.localScale *= visualScale;
-            Bounds fittedBounds = GetModelBounds(visual);
-            Vector3 centerInBall = ball.transform.InverseTransformPoint(fittedBounds.center);
-            visual.transform.localPosition -= centerInBall;
+            if (!s_ballVisualConfigured)
+            {
+                Bounds sourceBounds = GetModelBounds(visual);
+                float diameter = radius * 2f;
+                float visualScale = diameter / Mathf.Max(sourceBounds.size.x, sourceBounds.size.y);
+                visual.transform.localScale *= visualScale;
+                Bounds fittedBounds = GetModelBounds(visual);
+                Vector3 centerInBall = ball.transform.InverseTransformPoint(fittedBounds.center);
+                visual.transform.localPosition -= centerInBall;
+
+                s_ballVisualScaleUnit = visual.transform.localScale / radius;
+                s_ballVisualCenterOffsetUnit = centerInBall / radius;
+                s_ballVisualConfigured = true;
+            }
+            else
+            {
+                visual.transform.localScale = s_ballVisualScaleUnit * radius;
+                visual.transform.localPosition = -s_ballVisualCenterOffsetUnit * radius;
+            }
         }
         else
         {
@@ -1068,16 +1204,16 @@ private void Fire()
         CircleCollider2D collider = ball.GetComponent<CircleCollider2D>();
         collider.radius = radius;
 
-        // When the shot is committed to a specific tapped block, let it pass through every other
-        // block so it strikes exactly what the player aimed at instead of the nearest crate in line.
-        // Piercing shots are never committed - they are meant to hit everything on the way through.
+        // When the shot is committed to a specific tapped block, only ignore blocks that sit in front
+        // of it on depth so the projectile reaches the intended target without wasting collision pair updates.
         if (intendedTarget != null && !piercing)
         {
             Collider2D targetCollider = intendedTarget.Collider;
+            float targetZ = intendedTarget.transform.position.z;
             for (int i = 0; i < blockColliders.Count; i++)
             {
                 Collider2D blockCollider = blockColliders[i];
-                if (blockCollider != null && blockCollider != targetCollider)
+                if (blockCollider != null && blockCollider != targetCollider && blockCollider.transform.position.z < targetZ - 0.02f)
                 {
                     Physics2D.IgnoreCollision(collider, blockCollider, true);
                 }
@@ -1102,18 +1238,19 @@ private void Fire()
     private Material skullBallMaterial;
     private Material GetSkullBallMaterial()
     {
-        if (skullBallMaterial != null) return skullBallMaterial;
-        skullBallMaterial = ballModelMaterial != null
+        if (s_skullBallMaterial != null) return s_skullBallMaterial;
+        s_skullBallMaterial = ballModelMaterial != null
             ? new Material(ballModelMaterial)
             : CreateBrightModelMaterial(Resources.Load<Texture2D>("ball/shaded"), "Warfest Skull Ball");
-        if (skullBallMaterial != null)
+        if (s_skullBallMaterial != null)
         {
-            skullBallMaterial.name = "Warfest Skull Ball";
+            s_skullBallMaterial.name = "Warfest Skull Ball";
             Color tint = new Color(0.22f, 0.24f, 0.32f, 1f);
-            if (skullBallMaterial.HasProperty("_BaseColor")) skullBallMaterial.SetColor("_BaseColor", tint);
-            if (skullBallMaterial.HasProperty("_Color")) skullBallMaterial.SetColor("_Color", tint);
+            if (s_skullBallMaterial.HasProperty("_BaseColor")) s_skullBallMaterial.SetColor("_BaseColor", tint);
+            if (s_skullBallMaterial.HasProperty("_Color")) s_skullBallMaterial.SetColor("_Color", tint);
         }
-        return skullBallMaterial;
+        skullBallMaterial = s_skullBallMaterial;
+        return s_skullBallMaterial;
     }
 
     private IEnumerator ShowFailureAfterDelay()
@@ -1263,86 +1400,133 @@ public void RegisterTargetBroken(WarfestTarget target)
     }
 #endif
 
-    private void CreateExplosionVfx(Vector2 center)
+    private void EnsureExplosionPool()
     {
-        Sprite flash = GetExplosionSprite();
-        GameObject flashObject = CreateSprite("Bomb Flash", flash, new Vector3(center.x, center.y, -0.35f), Vector2.one * 0.16f, 30);
-        SpriteRenderer flashRenderer = flashObject.GetComponent<SpriteRenderer>();
-        flashRenderer.color = new Color(1f, 0.96f, 0.34f, 0.95f);
-        StartCoroutine(AnimateExplosionFlash(flashObject.transform, flashRenderer));
+        if (explosionPool.Count > 0) return;
+        Transform parent = worldRoot != null ? worldRoot : transform;
+        for (int i = 0; i < ExplosionPoolCapacity; i++)
+        {
+            GameObject root = new GameObject($"Explosion VFX {i}");
+            root.transform.SetParent(parent, false);
 
-        GameObject sparksObject = new GameObject("Bomb Sparks", typeof(ParticleSystem));
-        sparksObject.transform.SetParent(worldRoot, false);
-        sparksObject.transform.position = new Vector3(center.x, center.y, -0.40f);
-        ParticleSystem sparks = sparksObject.GetComponent<ParticleSystem>();
-        sparks.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
-        ParticleSystem.MainModule main = sparks.main;
-        main.duration = 0.45f;
-        main.loop = false;
-        main.startLifetime = new ParticleSystem.MinMaxCurve(0.30f, 0.68f);
-        main.startSpeed = new ParticleSystem.MinMaxCurve(2.4f, 5.4f);
-        main.startSize = new ParticleSystem.MinMaxCurve(0.07f, 0.20f);
-        main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 0.95f, 0.25f), new Color(1f, 0.18f, 0.02f));
-        main.gravityModifier = 0.55f;
-        main.maxParticles = 48;
+            Sprite flash = GetExplosionSprite();
+            GameObject flashObj = CreateSprite("Bomb Flash", flash, Vector3.zero, Vector2.one * 0.16f, 30);
+            flashObj.transform.SetParent(root.transform, false);
+            SpriteRenderer flashRen = flashObj.GetComponent<SpriteRenderer>();
+            flashRen.color = new Color(1f, 0.96f, 0.34f, 0f);
 
-        ParticleSystem.EmissionModule emission = sparks.emission;
-        emission.rateOverTime = 0f;
-        emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 36) });
-        ParticleSystem.ShapeModule shape = sparks.shape;
-        shape.shapeType = ParticleSystemShapeType.Circle;
-        shape.radius = 0.16f;
+            GameObject sparksObj = new GameObject("Bomb Sparks", typeof(ParticleSystem));
+            sparksObj.transform.SetParent(root.transform, false);
+            ParticleSystem sparks = sparksObj.GetComponent<ParticleSystem>();
+            sparks.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            ParticleSystem.MainModule main = sparks.main;
+            main.playOnAwake = false;
+            main.duration = 0.45f;
+            main.loop = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.30f, 0.68f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(2.4f, 5.4f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.07f, 0.20f);
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 0.95f, 0.25f), new Color(1f, 0.18f, 0.02f));
+            main.gravityModifier = 0.55f;
+            main.maxParticles = 48;
 
-        ParticleSystem.ColorOverLifetimeModule colorOverLifetime = sparks.colorOverLifetime;
-        colorOverLifetime.enabled = true;
-        Gradient gradient = new Gradient();
-        gradient.SetKeys(
-            new[] { new GradientColorKey(new Color(1f, 0.95f, 0.2f), 0f), new GradientColorKey(new Color(1f, 0.12f, 0.01f), 1f) },
-            new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) });
-        colorOverLifetime.color = gradient;
+            ParticleSystem.EmissionModule emission = sparks.emission;
+            emission.rateOverTime = 0f;
+            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 36) });
 
-        ParticleSystemRenderer particleRenderer = sparksObject.GetComponent<ParticleSystemRenderer>();
-        // Reuse one shared material for every explosion. Assigning `.material` (or `new Material`
-        // per burst) would leak a material each time a bomb goes off.
-        Material particleMaterial = GetExplosionParticleMaterial();
-        if (particleMaterial != null) particleRenderer.sharedMaterial = particleMaterial;
-        particleRenderer.sortingOrder = 31;
-        sparks.Play();
-        if (Application.isPlaying) Destroy(sparksObject, 1.25f);
-        else DestroyImmediate(sparksObject);
+            ParticleSystem.ShapeModule shape = sparks.shape;
+            shape.shapeType = ParticleSystemShapeType.Circle;
+            shape.radius = 0.16f;
+
+            ParticleSystem.ColorOverLifetimeModule colorOverLifetime = sparks.colorOverLifetime;
+            colorOverLifetime.enabled = true;
+            Gradient gradient = new Gradient();
+            gradient.SetKeys(
+                new[] { new GradientColorKey(new Color(1f, 0.95f, 0.2f), 0f), new GradientColorKey(new Color(1f, 0.12f, 0.01f), 1f) },
+                new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) });
+            colorOverLifetime.color = gradient;
+
+            ParticleSystemRenderer particleRenderer = sparksObj.GetComponent<ParticleSystemRenderer>();
+            Material particleMaterial = GetExplosionParticleMaterial();
+            if (particleMaterial != null) particleRenderer.sharedMaterial = particleMaterial;
+            particleRenderer.sortingOrder = 31;
+
+            root.SetActive(false);
+
+            explosionPool.Add(new ExplosionVfxItem
+            {
+                rootObject = root,
+                flashTransform = flashObj.transform,
+                flashRenderer = flashRen,
+                sparks = sparks
+            });
+        }
     }
 
-    private IEnumerator AnimateExplosionFlash(Transform flashTransform, SpriteRenderer flashRenderer)
+    private void CreateExplosionVfx(Vector2 center)
+    {
+        EnsureExplosionPool();
+        if (explosionPool.Count == 0) return;
+
+        ExplosionVfxItem item = explosionPool[nextExplosionPoolIndex];
+        nextExplosionPoolIndex = (nextExplosionPoolIndex + 1) % explosionPool.Count;
+
+        if (item.flashRoutine != null)
+        {
+            StopCoroutine(item.flashRoutine);
+            item.flashRoutine = null;
+        }
+
+        item.rootObject.SetActive(true);
+        item.flashTransform.position = new Vector3(center.x, center.y, -0.35f);
+        item.flashTransform.localScale = Vector3.one * 0.16f;
+        item.flashRenderer.color = new Color(1f, 0.96f, 0.34f, 0.95f);
+
+        item.sparks.transform.position = new Vector3(center.x, center.y, -0.40f);
+        item.sparks.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        item.sparks.Play();
+
+        item.flashRoutine = StartCoroutine(AnimateExplosionFlash(item));
+    }
+
+    private IEnumerator AnimateExplosionFlash(ExplosionVfxItem item)
     {
         const float duration = 0.38f;
         float time = 0f;
-        while (time < duration && flashTransform != null && flashRenderer != null)
+        while (time < duration && item.flashTransform != null && item.flashRenderer != null)
         {
             time += Time.deltaTime;
             float t = Mathf.Clamp01(time / duration);
             float scale = Mathf.Lerp(0.16f, 2.65f, 1f - (1f - t) * (1f - t));
-            flashTransform.localScale = Vector3.one * scale;
-            Color color = flashRenderer.color;
+            item.flashTransform.localScale = Vector3.one * scale;
+            Color color = item.flashRenderer.color;
             color.a = 1f - t;
-            flashRenderer.color = color;
+            item.flashRenderer.color = color;
             yield return null;
         }
-        if (flashTransform != null) Destroy(flashTransform.gameObject);
+        if (item.flashRenderer != null)
+        {
+            Color c = item.flashRenderer.color;
+            c.a = 0f;
+            item.flashRenderer.color = c;
+        }
+        item.flashRoutine = null;
     }
 
     private Material GetExplosionParticleMaterial()
     {
-        if (explosionParticleMaterial != null) return explosionParticleMaterial;
+        if (s_explosionParticleMaterial != null) return s_explosionParticleMaterial;
         Shader particleShader = Shader.Find("Sprites/Default");
         if (particleShader == null) particleShader = Shader.Find("Universal Render Pipeline/Unlit");
         if (particleShader == null) return null;
-        explosionParticleMaterial = new Material(particleShader) { name = "Warfest Explosion Sparks" };
-        return explosionParticleMaterial;
+        s_explosionParticleMaterial = new Material(particleShader) { name = "Warfest Explosion Sparks" };
+        explosionParticleMaterial = s_explosionParticleMaterial;
+        return s_explosionParticleMaterial;
     }
 
     private Sprite GetExplosionSprite()
     {
-        if (explosionSprite != null) return explosionSprite;
+        if (s_explosionSprite != null) return s_explosionSprite;
         const int size = 64;
         Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
         texture.name = "Bomb Flash Texture";
@@ -1361,9 +1545,10 @@ public void RegisterTargetBroken(WarfestTarget target)
         }
         texture.SetPixels(pixels);
         texture.Apply();
-        explosionSprite = Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), size);
-        explosionSprite.name = "Bomb Flash";
-        return explosionSprite;
+        s_explosionSprite = Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), size);
+        s_explosionSprite.name = "Bomb Flash";
+        explosionSprite = s_explosionSprite;
+        return s_explosionSprite;
     }
 
     private void UpdateRecoil()
@@ -1592,12 +1777,22 @@ public void RegisterTargetBroken(WarfestTarget target)
         musicSource.spatialBlend = 0f;
         musicSource.volume = 0.35f;
 
-        shootClip = CreateShootClip();
-        blockPopClip = WarfestAudio.GetMatchClip();
-        if (blockPopClip == null) blockPopClip = CreateBlockPopClip();
+        if (s_shootClip == null) s_shootClip = CreateShootClip();
+        shootClip = s_shootClip;
 
-        musicClip = WarfestAudio.GetLevelClip();
-        if (musicClip == null) musicClip = CreateMusicClip();
+        if (s_blockPopClip == null)
+        {
+            s_blockPopClip = WarfestAudio.GetMatchClip();
+            if (s_blockPopClip == null) s_blockPopClip = CreateBlockPopClip();
+        }
+        blockPopClip = s_blockPopClip;
+
+        if (s_musicClip == null)
+        {
+            s_musicClip = WarfestAudio.GetLevelClip();
+            if (s_musicClip == null) s_musicClip = CreateMusicClip();
+        }
+        musicClip = s_musicClip;
         musicSource.clip = musicClip;
         musicSource.mute = !WarfestAudio.MusicEnabled;
         musicSource.Play();
