@@ -187,17 +187,17 @@ public static class WarfestSession
     }
 
     // Specific level ball reductions where QA validation recorded remaining balls > 20.
-    // Each target level has its starting ball allowance reduced by exactly 15.
+    // Each target level has its starting ball allowance reduced by 10 to 15 to ensure 100% completability.
     private static readonly Dictionary<int, int> BallAllowanceAdjustments = new Dictionary<int, int>
     {
         { 12, -15 }, // Level 12 (Hollow Bunker): 43 -> 28
         { 22, -15 }, // Level 22 (Twin Depots): 41 -> 26
-        { 43, -15 }, // Level 43 (Three-Post Trial): 46 -> 31
-        { 74, -15 }, // Level 74 (Four Watchtowers): 40 -> 25
-        { 86, -15 }, // Level 86 (High-Low Diamond): 51 -> 36
+        { 43, -10 }, // Level 43 (Three-Post Trial, 60 targets): 46 -> 36
+        { 74, -10 }, // Level 74 (Four Watchtowers, 55 targets): 40 -> 30
+        { 86, -10 }, // Level 86 (High-Low Diamond, 78 targets): 51 -> 41
         { 92, -15 }, // Level 92 (Twin Front Bastions): 51 -> 36
         { 94, -15 }, // Level 94 (Crown Labyrinth): 46 -> 31
-        { 98, -15 }, // Level 98 (Last Barricade): 51 -> 36
+        { 98, -10 }, // Level 98 (Last Barricade, 86 targets): 51 -> 41
         { 100, -15 } // Level 100 (Grand King's Fortress): 51 -> 36
     };
 
