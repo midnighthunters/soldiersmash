@@ -57,6 +57,7 @@ public sealed class WarfestGameController : MonoBehaviour
     private Material ballModelMaterial;
     private readonly List<float> modelTableTopYs = new List<float>();
     private readonly List<float> modelTableCenterXs = new List<float>();
+    private readonly List<float> modelTableDepths = new List<float>();
     private readonly List<int> blockDepthLayers = new List<int>();
     private Sprite[] blockSprites;
     private Sprite[] boosterSprites;
@@ -122,7 +123,7 @@ public sealed class WarfestGameController : MonoBehaviour
     private const float ShotRadius = 0.16f;
     private const float ShotSpeed = 17f;
     private const float ShotLifetime = 4f;
-    private const float BlockSizeMultiplier = 1.50f;
+    private const float BlockSizeMultiplier = 1.15f;
     private const float CannonBasePositionY = -4.72f;
     private const float CannonPivotOffsetY = 0.52f;
     private const float FallenTargetCheckInterval = 0.10f;
@@ -512,6 +513,7 @@ private void BuildWorld()
             WarfestLevelCatalog.FillModelTables(level.number - 1, tableSpecs);
             modelTableTopYs.Clear();
             modelTableCenterXs.Clear();
+            modelTableDepths.Clear();
             for (int i = 0; i < tableSpecs.Count; i++) CreateModelTable(tableSpecs[i], i);
             BuildModelLayout(level.number);
         }
@@ -568,6 +570,7 @@ private void CreateModelTable(WarfestLevelCatalog.ModelTableSpec spec, int index
         float modelTableTopY = MeasureTableSurfaceY(table, tableBounds);
         modelTableTopYs.Add(modelTableTopY);
         modelTableCenterXs.Add(tableBounds.center.x);
+        modelTableDepths.Add(spec.depth);
 
         GameObject surface = new GameObject("Level Table Surface " + (index + 1).ToString("00"), typeof(BoxCollider2D));
         surface.transform.SetParent(worldRoot, false);
@@ -650,7 +653,9 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         float scaledX = tableCenterX + (spec.x - tableCenterX) * BlockSizeMultiplier;
         GameObject block = new GameObject(layerName + " Crate " + (index + 1).ToString("00"));
         block.transform.SetParent(worldRoot, false);
-        float renderDepth = spec.depthLayer == 0 ? WarfestLevelCatalog.FrontLayerZ : WarfestLevelCatalog.RearLayerZ;
+        float renderDepth = modelTableDepths.Count > tableIndex
+            ? modelTableDepths[tableIndex]
+            : (spec.depthLayer == 0 ? WarfestLevelCatalog.FrontLayerZ : WarfestLevelCatalog.RearLayerZ);
         block.transform.localPosition = new Vector3(scaledX, 0f, renderDepth);
 
         GameObject visual = Instantiate(prefab);
@@ -1270,6 +1275,7 @@ public void RegisterTargetBroken(WarfestTarget target)
         sparksObject.transform.SetParent(worldRoot, false);
         sparksObject.transform.position = new Vector3(center.x, center.y, -0.40f);
         ParticleSystem sparks = sparksObject.GetComponent<ParticleSystem>();
+        sparks.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         ParticleSystem.MainModule main = sparks.main;
         main.duration = 0.45f;
         main.loop = false;
@@ -1302,7 +1308,8 @@ public void RegisterTargetBroken(WarfestTarget target)
         if (particleMaterial != null) particleRenderer.sharedMaterial = particleMaterial;
         particleRenderer.sortingOrder = 31;
         sparks.Play();
-        Destroy(sparksObject, 1.25f);
+        if (Application.isPlaying) Destroy(sparksObject, 1.25f);
+        else DestroyImmediate(sparksObject);
     }
 
     private IEnumerator AnimateExplosionFlash(Transform flashTransform, SpriteRenderer flashRenderer)
@@ -2168,7 +2175,9 @@ private void CreateBackground()
 
 #if UNITY_EDITOR
     [ContextMenu("Build Edit Mode Preview")]
-    public void BuildEditModePreview()
+    public void BuildEditModePreview() => BuildEditModePreview(0);
+
+    public void BuildEditModePreview(int levelIndex)
     {
         font = bodyFont != null ? bodyFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         if (headingFont == null) headingFont = font;
@@ -2176,8 +2185,9 @@ private void CreateBackground()
         LoadOriginalSprites();
         EnsureEventSystem();
         EnsureCamera();
-        level = WarfestLevelCatalog.Get(0);
-        ballCapacity = WarfestSession.GetBallAllowance(0);
+        int safeLvl = Mathf.Clamp(levelIndex, 0, WarfestLevelCatalog.AuthoredLevelCount - 1);
+        level = WarfestLevelCatalog.Get(safeLvl);
+        ballCapacity = WarfestSession.GetBallAllowance(safeLvl);
         remainingBalls = ballCapacity;
         BuildWorld();
         BuildHud();

@@ -35,12 +35,12 @@ public static partial class WarfestLevelCatalog
     private const float TableGap = 0.10f;     // visible seam between tables sharing the same stage row
     private const float StageStep = 0.16f;    // small tabletop lift used to draw gates, crowns, and stairs
     private const float BaseTableTop = -0.35f;
-    private const float TwinTableWidth = 3.25f;
-    private const float TwinTableCenterOffset = 0.62f;
-    private const float TwinFrontTop = -0.82f;
-    private const float TwinRearTop = 0.48f;
-    private const float TwinFrontYaw = 30f;
-    private const float TwinRearYaw = -30f;
+    private const float TwinTableWidth = 2.45f;
+    private const float TwinTableCenterOffset = 0.92f;
+    private const float TwinFrontTop = -0.65f;
+    private const float TwinRearTop = 0.35f;
+    private const float TwinFrontYaw = 16f;
+    private const float TwinRearYaw = -16f;
 
     // [box, box2, box3, long_box, long_box2, soldier, cannister, bomb, king] for levels 1..100.
     // Transcribed verbatim from the master brief; every row's sum is the level's block budget.
@@ -148,15 +148,33 @@ public static partial class WarfestLevelCatalog
         new[]{14,7,5,6,5,8,6,5,1}, // 100 Grand King's Fortress
     };
 
+    private static readonly HashSet<int> ThreeTableLevels = new HashSet<int>
+    {
+        52, 54, 60, 70, 72, 75, 83, 85, 87, 90, 93, 100
+    };
+
+    private static readonly HashSet<int> TwoTableLateLevels = new HashSet<int>
+    {
+        56, 58, 62, 64, 67, 73, 76, 79, 81, 86, 89, 92, 98
+    };
+
     public static int CampaignTableCount(int zeroBasedLevel)
     {
-        return UsesTwinTableFormat(zeroBasedLevel) ? 2 : 1;
+        int levelNumber = Mathf.Clamp(zeroBasedLevel, 0, 99) + 1;
+        if (levelNumber >= 20 && levelNumber <= 50) return 2;
+        if (ThreeTableLevels.Contains(levelNumber)) return 3;
+        if (TwoTableLateLevels.Contains(levelNumber)) return 2;
+        return 1;
     }
 
     private static bool UsesTwinTableFormat(int zeroBasedLevel)
     {
-        int levelNumber = Mathf.Clamp(zeroBasedLevel, 0, 99) + 1;
-        return levelNumber >= 20 && levelNumber <= 50;
+        return CampaignTableCount(zeroBasedLevel) == 2;
+    }
+
+    private static bool UsesThreeTableFormat(int zeroBasedLevel)
+    {
+        return CampaignTableCount(zeroBasedLevel) == 3;
     }
 
     // Authored military-toy names for each level (from the master brief's design column). Used by
@@ -247,18 +265,18 @@ public static int[] CampaignCompositionFor(int zeroBasedLevel)
             expanded[CANNISTER] += 2;
         }
 
-        if (UsesTwinTableFormat(level))
+        if (UsesTwinTableFormat(level) || UsesThreeTableFormat(level))
         {
-            // The paired forts are deliberately denser than the surrounding single-table levels.
-            // Even counts let both tables receive identical inventories, so the complete formation
-            // remains a true mirror pair instead of merely looking approximately balanced.
             expanded[BOX] += 4;
             expanded[BOX2] += 2;
             expanded[LONG_BOX2] += 2;
             expanded[SOLDIER] += 2;
-            for (int i = 0; i < expanded.Length; i++)
+            if (UsesTwinTableFormat(level))
             {
-                if ((expanded[i] & 1) != 0) expanded[i]++;
+                for (int i = 0; i < expanded.Length; i++)
+                {
+                    if ((expanded[i] & 1) != 0) expanded[i]++;
+                }
             }
         }
         return expanded;
@@ -299,11 +317,42 @@ public static int[] CampaignCompositionFor(int zeroBasedLevel)
     private static List<TableSlot> GetArrangement(int zeroBasedLevel)
     {
         int level = Mathf.Clamp(zeroBasedLevel, 0, 99);
-        if (UsesTwinTableFormat(level))
+        int tableCount = CampaignTableCount(level);
+
+        if (tableCount == 3)
         {
-            // The left table sits forward and lower; the right table is just behind it and raised
-            // enough that both play surfaces remain readable. Opposing yaw angles reproduce the
-            // open V-shaped arrangement in the supplied reference while blocks remain upright.
+            // Two distinct 3-table staging formations:
+            // 1. Triangle Formation (front center vanguard, two elevated flanking bastions)
+            // 2. Stepped Formation (elevated central citadel, two lower forward outposts)
+            bool stepped = (level % 2 == 1);
+            if (stepped)
+            {
+                return new List<TableSlot>
+                {
+                    Slot(0f, 1, 4, true, level % 20,
+                        2.20f, 0.35f, RearLayerZ, 0f),
+                    Slot(-1.18f, 0, 4, false, (level + 1) % 20,
+                        2.05f, -0.65f, FrontLayerZ, 16f),
+                    Slot(1.18f, 0, 4, false, (level + 2) % 20,
+                        2.05f, -0.65f, FrontLayerZ, -16f)
+                };
+            }
+            else
+            {
+                return new List<TableSlot>
+                {
+                    Slot(0f, 0, 4, false, level % 20,
+                        2.20f, -0.70f, FrontLayerZ, 0f),
+                    Slot(-1.18f, 1, 4, false, (level + 1) % 20,
+                        2.05f, 0.35f, RearLayerZ, 16f),
+                    Slot(1.18f, 1, 4, true, (level + 2) % 20,
+                        2.05f, 0.35f, RearLayerZ, -16f)
+                };
+            }
+        }
+
+        if (tableCount == 2)
+        {
             return new List<TableSlot>
             {
                 Slot(-TwinTableCenterOffset, 0, 4, false, level % 20,
@@ -313,7 +362,7 @@ public static int[] CampaignCompositionFor(int zeroBasedLevel)
             };
         }
 
-        // Seven fixed cells fit inside the full 4.8-unit table and give every level a stable,
+        // Seven fixed cells fit inside the full 4.4-unit table and give every level a stable,
         // arcade-like presentation board. The profile and ornament order vary per level.
         return new List<TableSlot>
         {
@@ -330,14 +379,33 @@ public static int[] CampaignCompositionFor(int zeroBasedLevel)
         int[][] inventory = new int[slots.Count][];
         for (int i = 0; i < inventory.Length; i++) inventory[i] = new int[comp.Length];
 
-        int command = 0;
-        for (int i = 0; i < slots.Count; i++) if (slots[i].command) command = i;
-        for (int variant = 0; variant < comp.Length; variant++)
+        if (slots.Count == 3)
         {
-            int perTable = comp[variant] / slots.Count;
-            int remainder = comp[variant] % slots.Count;
-            for (int i = 0; i < slots.Count; i++) inventory[i][variant] = perTable;
-            for (int i = 0; i < remainder; i++) inventory[(command + i) % slots.Count][variant]++;
+            for (int v = 0; v < comp.Length; v++)
+            {
+                int wing = comp[v] / 3;
+                if (v == KING) wing = 0;
+                inventory[1][v] = wing;
+                inventory[2][v] = wing;
+                inventory[0][v] = comp[v] - 2 * wing;
+            }
+            return inventory;
+        }
+
+        if (slots.Count == 2)
+        {
+            for (int v = 0; v < comp.Length; v++)
+            {
+                int half = comp[v] / 2;
+                inventory[0][v] = half;
+                inventory[1][v] = comp[v] - half;
+            }
+            return inventory;
+        }
+
+        for (int v = 0; v < comp.Length; v++)
+        {
+            inventory[0][v] = comp[v];
         }
         return inventory;
     }
@@ -474,11 +542,49 @@ private static void ComputeCampaign(int level, List<ModelBlockSpec> blocks, List
         int[] comp = CampaignCompositionFor(level);
         int[][] inv = AllocateInventory(comp, slots, level);
 
-        if (slots.Count == 2)
+        if (slots.Count == 3)
         {
-            // Build one compact fort, move it onto the front table, then reflect the exact same
-            // pieces onto the rear table. This keeps variant counts, silhouettes, and rotations
-            // perfectly symmetric while the table heights/depths create the front/back staging.
+            // 1. Build Table 0 (center command table)
+            int preCenter = blocks.Count;
+            BuildTable(blocks, 0, slots[0], inv[0], level);
+            int postCenter = blocks.Count;
+            for (int i = preCenter; i < postCenter; i++)
+            {
+                ModelBlockSpec s = blocks[i];
+                s.x += slots[0].x;
+                s.tableIndex = 0;
+                s.depthLayer = (slots[0].depth > 0.8f ? 1 : 0);
+                blocks[i] = s;
+            }
+
+            // 2. Build Table 1 (left wing)
+            int preWing = blocks.Count;
+            BuildTable(blocks, 1, slots[1], inv[1], level + 1);
+            int postWing = blocks.Count;
+            for (int i = preWing; i < postWing; i++)
+            {
+                ModelBlockSpec s = blocks[i];
+                s.x += slots[1].x;
+                s.tableIndex = 1;
+                s.depthLayer = (slots[1].depth > 0.8f ? 1 : 0);
+                blocks[i] = s;
+            }
+
+            // 3. Mirror Table 1 onto Table 2 (right wing)
+            for (int i = preWing; i < postWing; i++)
+            {
+                ModelBlockSpec source = blocks[i];
+                ModelBlockSpec mirror = source;
+                float localX = source.x - slots[1].x;
+                mirror.x = slots[2].x - localX;
+                mirror.rotation = -source.rotation;
+                mirror.tableIndex = 2;
+                mirror.depthLayer = (slots[2].depth > 0.8f ? 1 : 0);
+                blocks.Add(mirror);
+            }
+        }
+        else if (slots.Count == 2)
+        {
             BuildTable(blocks, 0, slots[0], inv[0], level);
             int sourceCount = blocks.Count;
             for (int i = 0; i < sourceCount; i++)
@@ -486,7 +592,7 @@ private static void ComputeCampaign(int level, List<ModelBlockSpec> blocks, List
                 ModelBlockSpec source = blocks[i];
                 source.x += slots[0].x;
                 source.tableIndex = 0;
-                source.depthLayer = 0;
+                source.depthLayer = (slots[0].depth > 0.8f ? 1 : 0);
                 blocks[i] = source;
             }
             for (int i = 0; i < sourceCount; i++)
@@ -495,7 +601,7 @@ private static void ComputeCampaign(int level, List<ModelBlockSpec> blocks, List
                 mirror.x = -mirror.x;
                 mirror.rotation = -mirror.rotation;
                 mirror.tableIndex = 1;
-                mirror.depthLayer = 1;
+                mirror.depthLayer = (slots[1].depth > 0.8f ? 1 : 0);
                 blocks.Add(mirror);
             }
         }
@@ -515,8 +621,65 @@ private static void ComputeCampaign(int level, List<ModelBlockSpec> blocks, List
                 slot.x, slot.width, slot.visibleTopY, slot.depth, slot.yawDegrees));
         }
 
+        FitLayoutToScreen(blocks, tables);
+
         if (blocks.Count != CampaignBlockCount(level))
             Debug.LogError("Campaign layout changed inventory at level " + (level + 1));
+    }
+
+    private static void FitLayoutToScreen(List<ModelBlockSpec> blocks, List<ModelTableSpec> tables)
+    {
+        if (blocks == null || blocks.Count == 0) return;
+
+        const float TargetMaxAbsX = 2.38f;
+        const float TargetMaxY = 6.40f;
+        const float Mult = 1.15f; // Matches WarfestGameController.BlockSizeMultiplier
+
+        float maxAbsX = 0f;
+        float maxY = float.MinValue;
+        float peakTableTopY = -0.35f;
+
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            ModelBlockSpec spec = blocks[i];
+            int tableIdx = Mathf.Clamp(spec.tableIndex, 0, Mathf.Max(0, tables.Count - 1));
+            float tableCenterX = tables.Count > tableIdx ? tables[tableIdx].x : 0f;
+            float tableTopY = tables.Count > tableIdx ? tables[tableIdx].visibleTopY : -0.35f;
+
+            float scaledX = tableCenterX + (spec.x - tableCenterX) * Mult;
+            float halfW = spec.width * Mult * 0.5f;
+            float bottomY = tableTopY + 0.001f + spec.yOffset * Mult;
+            float topY = bottomY + spec.height * Mult;
+
+            maxAbsX = Mathf.Max(maxAbsX, Mathf.Abs(scaledX) + halfW);
+            if (topY > maxY)
+            {
+                maxY = topY;
+                peakTableTopY = tableTopY;
+            }
+        }
+
+        float scaleX = maxAbsX > TargetMaxAbsX ? (TargetMaxAbsX / maxAbsX) : 1f;
+        float scaleY = (maxY > TargetMaxY && (maxY - peakTableTopY) > 0.01f)
+            ? ((TargetMaxY - peakTableTopY) / (maxY - peakTableTopY))
+            : 1f;
+
+        float scale = Mathf.Min(scaleX, scaleY);
+        if (scale < 0.999f)
+        {
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                ModelBlockSpec spec = blocks[i];
+                int tableIdx = Mathf.Clamp(spec.tableIndex, 0, Mathf.Max(0, tables.Count - 1));
+                float tableCenterX = tables.Count > tableIdx ? tables[tableIdx].x : 0f;
+
+                spec.x = tableCenterX + (spec.x - tableCenterX) * scale;
+                spec.yOffset *= scale;
+                spec.width *= scale;
+                spec.height *= scale;
+                blocks[i] = spec;
+            }
+        }
     }
 
     private static void PlaceTableRows(List<TableSlot> slots, float[] widths, float[] centers)
@@ -738,16 +901,19 @@ private static void ComputeCampaign(int level, List<ModelBlockSpec> blocks, List
         int minimumForHeight = Mathf.CeilToInt(bodyCubes / 5f);
         int minimumForDensity = Mathf.CeilToInt(totalPieces / 8f);
         int upper = Mathf.Clamp(maxColumns, 3, 7);
-        return Mathf.Clamp(Mathf.Max(authored, minimumForHeight, minimumForDensity), 3, upper);
+        int count = Mathf.Clamp(Mathf.Max(authored, minimumForHeight, minimumForDensity), 3, upper);
+        if ((bodyCubes & 1) != 0 && (count & 1) == 0)
+        {
+            count = (count < upper) ? count + 1 : count - 1;
+        }
+        return count;
     }
 
     private static float[] DesignColumnCenters(int count, int level, float tableWidth)
     {
         float[] centres = new float[count];
-        int spacingMode = (level * 7 + level / 10) % 5;
-        float desiredPitch = 0.60f + spacingMode * 0.055f;
         float maximumPitch = count <= 1 ? 0f : (tableWidth - CampaignCell - 0.20f) / (count - 1);
-        float pitch = count <= 1 ? 0f : Mathf.Min(desiredPitch, maximumPitch);
+        float pitch = count <= 1 ? 0f : Mathf.Min(0.56f, maximumPitch);
         for (int i = 0; i < count; i++) centres[i] = (i - (count - 1) * 0.5f) * pitch;
         return centres;
     }
@@ -763,198 +929,215 @@ private static void ComputeCampaign(int level, List<ModelBlockSpec> blocks, List
         int bodyCubes = box + box2;
         int totalPieces = 0;
         for (int i = 0; i < inv.Length; i++) totalPieces += inv[i];
-        bool denseStage = totalPieces >= 42;
+
         int C = DesignColumnCount(bodyCubes, totalPieces, styleSeed, slot.maxCols);
         int style = (styleSeed * 7 + (styleSeed / 20) * 3) % 20;
         int[] heights = BuildProfile(bodyCubes, C, style);
         float[] cx = DesignColumnCenters(C, styleSeed, slot.width);
 
-        // Body: box2 fills the lowest rows across all columns, box the rest. This consumes the
-        // full box+box2 budget and keeps the heaviest bricks on the ground for a stable base.
+        // Place body blocks row by row, symmetrically from ground up
         int box2Left = box2, boxLeft = box;
         int maxH = 0; for (int i = 0; i < C; i++) if (heights[i] > maxH) maxH = heights[i];
         for (int row = 0; row < maxH; row++)
         {
-            for (int i = 0; i < C; i++)
+            if (C % 2 == 1)
             {
-                if (heights[i] <= row) continue;
+                int mid = C / 2;
+                if (heights[mid] > row)
+                {
+                    int variant = (box2Left > 0) ? BOX2 : BOX;
+                    if (box2Left > 0) box2Left--; else boxLeft--;
+                    AddModel(b, cx[mid], row * CELL, variant, CELL, CELL, 0, tableIndex);
+                }
+            }
+            for (int p = 0; p < C / 2; p++)
+            {
+                if (heights[p] <= row) continue;
                 int variant;
-                if (box2Left > 0) { variant = BOX2; box2Left--; }
-                else { variant = BOX; boxLeft--; }
-                AddModel(b, cx[i], row * CELL, variant, CELL, CELL, 0, tableIndex);
+                if (box2Left >= 2) { variant = BOX2; box2Left -= 2; }
+                else if (box2Left == 1) { variant = (p == 0 ? BOX2 : BOX); box2Left--; boxLeft--; }
+                else { variant = BOX; boxLeft -= 2; }
+
+                AddModel(b, cx[p], row * CELL, variant, CELL, CELL, 0, tableIndex);
+                AddModel(b, cx[C - 1 - p], row * CELL, variant, CELL, CELL, 0, tableIndex);
             }
         }
 
-        // Per-column stacking cursor for decorations and lintels. It is the single source of
-        // truth for vertical placement, so pieces never overlap and never need a scale-down pass.
+        // Stacking cursors for column tops
         float[] cursor = new float[C];
         for (int i = 0; i < C; i++) cursor[i] = heights[i] * CELL;
 
-        int[] turretOrder = OrderForStyle(C, style, 1);
-        int[] canisterOrder = OrderForStyle(C, style, 3);
-        int[] bombOrder = InteriorOrder(C, style);
-        int[] soldierOrder = OrderForStyle(C, style, 5);
-
-        // Beam strategy alternates between valley bridges, authored bridge sequences, and tower
-        // crowns. That prevents every level from settling into the same flat roof course.
+        // Symmetric beams / lintels
         int beamTotal = lbox + lbox2;
         int lbLeft = lbox, lb2Left = lbox2;
-        int[] bridgeOrder = AdjacentOrder(C, style);
-        for (int k = 0; k < beamTotal; k++)
+        if ((beamTotal % 2 == 1))
         {
-            int beamMode = denseStage ? 0 : (styleSeed + style) % 3;
-            int bridge = beamMode == 1 ? bridgeOrder[k % bridgeOrder.Length] : bridgeOrder[0];
-            float bestTop = Mathf.Max(cursor[bridge], cursor[bridge + 1]);
-            for (int oi = beamMode == 1 ? bridgeOrder.Length : 1; oi < bridgeOrder.Length; oi++)
-            {
-                int candidate = bridgeOrder[oi];
-                float top = Mathf.Max(cursor[candidate], cursor[candidate + 1]);
-                bool preferred = beamMode == 0
-                    ? top < bestTop - 0.0001f
-                    : top > bestTop + 0.0001f;
-                if (preferred)
-                {
-                    bridge = candidate;
-                    bestTop = top;
-                }
-            }
-            int variant = TakeBeamVariant(ref lbLeft, ref lb2Left, k, styleSeed);
-            float width = variant == LONG_BOX ? 1.55f * CELL : 1.70f * CELL;
-            float height = variant == LONG_BOX ? 0.34f : 0.24f;
-            AddModel(b, (cx[bridge] + cx[bridge + 1]) * 0.5f, bestTop,
-                variant, width, height, 0, tableIndex);
-            cursor[bridge] = bestTop + height;
-            cursor[bridge + 1] = bestTop + height;
+            int v = TakeBeamVariant(ref lbLeft, ref lb2Left, 0, styleSeed);
+            float w = v == LONG_BOX ? 1.55f * CELL : 1.70f * CELL;
+            float h = v == LONG_BOX ? 0.34f : 0.24f;
+            int mid = C / 2;
+            float roof = cursor[mid];
+            AddModel(b, 0f, roof, v, w, h, 0, tableIndex);
+            cursor[mid] += h;
+            if (C % 2 == 0) cursor[mid - 1] += h;
+            beamTotal--;
         }
 
-        // Decoration strategies rotate between balanced, ordered, alternating, and clustered
-        // placement. Counts still come from the authored level inventory.
-        for (int k = 0; k < box3; k++)
+        int beamPairs = beamTotal / 2;
+        for (int k = 0; k < beamPairs; k++)
         {
-            int i = denseStage ? LowestColumn(cursor, turretOrder) : DesignedColumn(cursor, turretOrder, styleSeed, k, 1);
-            AddModel(b, cx[i], cursor[i], BOX3, 0.42f, 0.58f, 0, tableIndex); cursor[i] += 0.58f;
+            int col = k % Mathf.Max(1, C / 2);
+            int v = TakeBeamVariant(ref lbLeft, ref lb2Left, k * 2, styleSeed);
+            float w = v == LONG_BOX ? 1.55f * CELL : 1.70f * CELL;
+            float h = v == LONG_BOX ? 0.34f : 0.24f;
+
+            float roofLeft = cursor[col];
+            float roofRight = cursor[C - 1 - col];
+            float roof = Mathf.Max(roofLeft, roofRight);
+
+            AddModel(b, cx[col], roof, v, w, h, 0, tableIndex);
+            AddModel(b, cx[C - 1 - col], roof, v, w, h, 0, tableIndex);
+            cursor[col] = roof + h;
+            cursor[C - 1 - col] = roof + h;
         }
-        for (int k = 0; k < can; k++)
+
+        // Symmetric toppers
+        PlaceSymmetricCrateType(b, tableIndex, BOX3, box3, 0.42f, 0.58f, C, cx, cursor, 0);
+        PlaceSymmetricCrateType(b, tableIndex, CANNISTER, can, 0.44f, 0.56f, C, cx, cursor, 1);
+        PlaceSymmetricCrateType(b, tableIndex, BOMB, bomb, 0.50f, 0.56f, C, cx, cursor, 2);
+        PlaceSymmetricCrateType(b, tableIndex, SOLDIER, sol, 0.44f, 0.62f, C, cx, cursor, 3);
+        if (king > 0)
         {
-            int i = denseStage ? LowestColumn(cursor, canisterOrder) : DesignedColumn(cursor, canisterOrder, styleSeed, k, 2);
-            AddModel(b, cx[i], cursor[i], CANNISTER, 0.44f, 0.56f, 0, tableIndex); cursor[i] += 0.56f;
-        }
-        for (int k = 0; k < bomb; k++)
-        {
-            int i = denseStage ? LowestColumn(cursor, bombOrder) : DesignedColumn(cursor, bombOrder, styleSeed, k, 3);
-            AddModel(b, cx[i], cursor[i], BOMB, 0.50f, 0.56f, 0, tableIndex); cursor[i] += 0.56f;
-        }
-        for (int k = 0; k < sol; k++)
-        {
-            int i = denseStage ? LowestColumn(cursor, soldierOrder) : DesignedColumn(cursor, soldierOrder, styleSeed, k, 4);
-            AddModel(b, cx[i], cursor[i], SOLDIER, 0.44f, 0.62f, 0, tableIndex); cursor[i] += 0.62f;
-        }
-        for (int k = 0; k < king; k++)
-        {
-            int i = HighestColumn(cursor, cx, style + k);
-            AddModel(b, cx[i], cursor[i], KING, 0.74f, 0.90f, 0, tableIndex);
-            cursor[i] += 0.90f;
+            int mid = C / 2;
+            float kRoof = cursor[mid];
+            AddModel(b, (C % 2 == 1) ? cx[mid] : 0f, kRoof, KING, 0.74f, 0.90f, 0, tableIndex);
+            cursor[mid] += 0.90f;
         }
     }
 
-    private static int DesignedColumn(float[] cursor, int[] order, int design, int serial, int phase)
+    private static void PlaceSymmetricCrateType(List<ModelBlockSpec> b, int tableIndex, int variant,
+        int count, float width, float height, int C, float[] cx, float[] cursor, int priority)
     {
-        int mode = (design + phase * 3) % 4;
-        if (mode == 0) return LowestColumn(cursor, order);
-        if (mode == 1) return order[serial % order.Length];
-        if (mode == 2) return order[(serial * 2 + design / 10) % order.Length];
+        if (count <= 0) return;
 
-        int a = order[serial % order.Length];
-        int b = order[(serial + 1) % order.Length];
-        return cursor[a] <= cursor[b] ? a : b;
-    }
-
-    private static int LowestColumn(float[] cursor, int[] order)
-    {
-        int best = order[0];
-        for (int oi = 1; oi < order.Length; oi++)
+        if (count % 2 == 1)
         {
-            int candidate = order[oi];
-            if (cursor[candidate] < cursor[best] - 0.0001f) best = candidate;
+            int mid = C / 2;
+            AddModel(b, (C % 2 == 1) ? cx[mid] : 0f, cursor[mid], variant, width, height, 0, tableIndex);
+            cursor[mid] += height;
+            count--;
         }
-        return best;
+
+        int pairs = count / 2;
+        for (int p = 0; p < pairs; p++)
+        {
+            int col = (p + priority) % Mathf.Max(1, C / 2);
+            int mirrorCol = C - 1 - col;
+            float y = Mathf.Max(cursor[col], cursor[mirrorCol]);
+
+            AddModel(b, cx[col], y, variant, width, height, 0, tableIndex);
+            AddModel(b, cx[mirrorCol], y, variant, width, height, 0, tableIndex);
+            cursor[col] = y + height;
+            cursor[mirrorCol] = y + height;
+        }
     }
 
-    // Column height profile summing to `total`, shaped by style. Uses the largest-remainder method
-    // so the sum is always exact and every used column has at least one brick.
     private static int[] BuildProfile(int total, int C, int style)
     {
         int[] h = new int[C];
-        if (C <= 0) return h;
+        if (C <= 0 || total <= 0) return h;
+
+        bool oddC = (C % 2 == 1);
+        int mid = C / 2;
+
         if (total <= C)
         {
-            // Centre the few bricks so short structures still read as a compact block.
-            int[] order = OrderCenterFirst(C);
-            for (int i = 0; i < total; i++) h[order[i]] = 1;
+            int leftSmall = total;
+            if (leftSmall % 2 == 1 && oddC) { h[mid] = 1; leftSmall--; }
+            int pairIdx = 1;
+            while (leftSmall >= 2)
+            {
+                int lCol = oddC ? mid - pairIdx : mid - pairIdx;
+                int rCol = C - 1 - lCol;
+                if (lCol >= 0 && rCol < C && h[lCol] == 0)
+                {
+                    h[lCol] = 1;
+                    h[rCol] = 1;
+                    leftSmall -= 2;
+                }
+                else break;
+                pairIdx++;
+            }
+            if (leftSmall > 0 && oddC) { h[mid] += leftSmall; leftSmall = 0; }
             return h;
         }
 
         for (int i = 0; i < C; i++) h[i] = 1;
         int left = total - C;
+
         float[] w = new float[C];
         for (int i = 0; i < C; i++)
         {
             float p = C <= 1 ? 0.5f : i / (float)(C - 1);
             float centre = 1f - Mathf.Abs(p * 2f - 1f);
             float edge = 1f - centre;
-            switch (style)
+            switch (style % 10)
             {
-                case 0: w[i] = 0.80f + ((i & 1) == 0 ? 0.70f : 0.15f); break; // battlement
-                case 1: w[i] = 0.40f + 1.90f * centre; break;               // pyramid
-                case 2: w[i] = 0.45f + 1.75f * edge; break;                 // gate / U
-                case 3: w[i] = 0.45f + 1.80f * p; break;                    // rising stairs
-                case 4: w[i] = 0.45f + 1.80f * (1f - p); break;             // falling stairs
-                case 5:
-                {
-                    float twin = 1f - Mathf.Min(Mathf.Abs(p - 0.25f), Mathf.Abs(p - 0.75f)) / 0.25f;
-                    w[i] = 0.45f + 1.75f * Mathf.Clamp01(twin); break;       // twin peaks
-                }
-                case 6: w[i] = 0.55f + 1.55f * edge + 0.30f * (i & 1); break; // split bunker
-                case 7: w[i] = 0.75f + ((i + 1) % 3 == 0 ? 1.25f : 0.25f); break; // watchtowers
-                case 8: w[i] = 0.40f + 2.10f * (1f - p) * (1f - p); break;  // left keep
-                case 9: w[i] = 0.40f + 2.10f * p * p; break;                // right keep
-                case 10: w[i] = 0.65f + 1.20f * Mathf.Abs(Mathf.Cos(p * Mathf.PI * 2f)); break;
-                case 11: w[i] = 0.55f + 1.40f * Mathf.Abs(Mathf.Cos(p * Mathf.PI * 3f)); break;
-                case 12: w[i] = 0.45f + 1.25f * p + ((i & 1) == 0 ? 0.55f : 0f); break;
-                case 13: w[i] = 0.45f + 1.25f * (1f - p) + ((i & 1) == 1 ? 0.55f : 0f); break;
-                case 14: w[i] = 0.55f + (p >= 0.20f && p <= 0.80f ? 1.45f : 0.20f); break; // mesa
-                case 15: w[i] = 0.40f + 2.35f * centre * centre * centre; break; // needle
-                case 16:
-                {
-                    float split = 1f - Mathf.Min(Mathf.Abs(p - 0.18f), Mathf.Abs(p - 0.82f)) / 0.32f;
-                    w[i] = 0.50f + 1.65f * Mathf.Clamp01(split); break;
-                }
-                case 17: w[i] = 0.70f + 1.10f * (0.5f + 0.5f * Mathf.Sin(p * Mathf.PI * 2f)); break;
-                case 18: w[i] = 0.55f + 0.55f * Mathf.Floor(p * 3.99f); break; // ziggurat steps
-                default: w[i] = 0.55f + ((i * 7 + C * 3) % 5) * 0.34f; break; // city skyline
+                case 0: w[i] = 0.40f + 1.80f * edge; break; // Twin bastions / gate
+                case 1: w[i] = 0.30f + 2.00f * centre; break; // Royal pyramid / apex keep
+                case 2: w[i] = 0.70f + 1.30f * Mathf.Abs(Mathf.Cos(p * Mathf.PI * 2f)); break; // Double arch / twin peaks
+                case 3: w[i] = 0.50f + 1.50f * Mathf.Clamp01(1f - Mathf.Abs(centre - 0.5f) * 2f); break; // Stepped terraces
+                case 4: w[i] = 0.60f + 1.40f * centre * centre; break; // High crown
+                case 5: w[i] = 0.50f + 1.50f * edge * edge; break; // Fortified wings
+                case 6: w[i] = 0.70f + ((i % 2 == 0) ? 0.80f : 0.20f); break; // Battlements
+                case 7: w[i] = 0.80f + 0.40f * centre; break; // Solid bunker rampart
+                case 8: w[i] = 0.45f + 1.60f * (centre > 0.6f ? 1f : 0.2f); break; // Citadel keep
+                default: w[i] = 0.55f + 1.20f * (1f - Mathf.Sin(p * Mathf.PI)); break; // Sentry ramparts
             }
-            if (w[i] < 0.01f) w[i] = 0.01f;
         }
-        float wsum = 0f; for (int i = 0; i < C; i++) wsum += w[i];
-        float[] frac = new float[C]; int used = 0;
-        for (int i = 0; i < C; i++)
+        for (int i = 0; i < C / 2; i++)
         {
-            float ideal = w[i] / wsum * left;
-            int fl = Mathf.FloorToInt(ideal);
-            h[i] += fl; used += fl; frac[i] = ideal - fl;
+            float avg = (w[i] + w[C - 1 - i]) * 0.5f;
+            w[i] = avg; w[C - 1 - i] = avg;
         }
-        int rem = left - used;
-        int[] tieOrder = OrderForStyle(C, style, 2);
-        for (int r = 0; r < rem; r++)
+
+        int half = C / 2;
+
+        if ((left % 2 == 1) && oddC)
         {
-            int bi = tieOrder[0];
-            for (int oi = 1; oi < C; oi++)
+            h[mid]++;
+            left--;
+        }
+
+        while (left >= 2)
+        {
+            int bestPair = 0;
+            float bestScore = -1f;
+            for (int i = 0; i < half; i++)
             {
-                int candidate = tieOrder[oi];
-                if (frac[candidate] > frac[bi] + 0.0001f) bi = candidate;
+                float score = w[i] / (h[i] + 0.1f);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestPair = i;
+                }
             }
-            h[bi]++; frac[bi] = -1f;
+            if (oddC && left >= 2)
+            {
+                float centerScore = w[mid] / (h[mid] + 0.1f);
+                if (centerScore > bestScore * 1.35f)
+                {
+                    h[mid] += 2;
+                    left -= 2;
+                    continue;
+                }
+            }
+            h[bestPair]++;
+            h[C - 1 - bestPair]++;
+            left -= 2;
         }
+
+        if (left == 1 && oddC) { h[mid]++; left--; }
         return h;
     }
 
