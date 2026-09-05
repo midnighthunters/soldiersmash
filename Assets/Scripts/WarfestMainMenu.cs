@@ -34,6 +34,11 @@ public sealed class WarfestMainMenu : MonoBehaviour
     private int displayedLives = -1;
     private int displayedLifeSeconds = -1;
     private float nextLifeHudRefreshTime;
+    private AudioSource menuMusicSource;
+    private GameObject settingsFlyout;
+    private Image soundButtonBackground;
+    private Image musicButtonBackground;
+    private bool settingsOpen;
 
     private void OnEnable()
     {
@@ -41,6 +46,12 @@ public sealed class WarfestMainMenu : MonoBehaviour
         {
             Application.targetFrameRate = 60;
             Rebuild();
+            StartMenuAudio();
+            if (!WarfestSession.HasShownSplash)
+            {
+                WarfestSession.HasShownSplash = true;
+                WarfestSplashScreen.Show(transform);
+            }
             return;
         }
 
@@ -62,11 +73,17 @@ public sealed class WarfestMainMenu : MonoBehaviour
         EditorApplication.delayCall -= EditorDeferredBuild;
         EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
 #endif
+        StopMenuAudio();
         // Tear the editor preview down cleanly; at runtime Unity handles scene teardown for us.
         if (!Application.isPlaying)
         {
             Teardown();
         }
+    }
+
+    private void OnDestroy()
+    {
+        StopMenuAudio();
     }
 
 #if UNITY_EDITOR
@@ -133,7 +150,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
     {
         // Destroy any menu canvas we generated earlier, including one orphaned by a domain
         // reload (the managed reference is cleared but the DontSave object can survive).
-        Canvas[] canvases = Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        Canvas[] canvases = Resources.FindObjectsOfTypeAll<Canvas>();
         foreach (Canvas canvas in canvases)
         {
             if (canvas != null && canvas.gameObject.name == GeneratedCanvasName)
@@ -158,6 +175,15 @@ public sealed class WarfestMainMenu : MonoBehaviour
             SafeDestroy(createdEventSystem);
             createdEventSystem = null;
         }
+
+        if (settingsFlyout != null)
+        {
+            SafeDestroy(settingsFlyout);
+            settingsFlyout = null;
+        }
+        soundButtonBackground = null;
+        musicButtonBackground = null;
+        settingsOpen = false;
     }
 
     private static void SafeDestroy(Object target)
@@ -209,6 +235,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
         BuildWorldDecorations();
         BuildMissionCard(level, balls);
         BuildBottomNavigation();
+        BuildSettingsFlyout();
     }
 
     private void CreateBackground(RectTransform root)
@@ -229,26 +256,38 @@ public sealed class WarfestMainMenu : MonoBehaviour
 
     private void BuildTopStatus(WarfestLevelCatalog.LevelDefinition level, int balls)
     {
-        CreateSheetImage(safeAreaRoot, "Commander", new Rect(8f, 7f, 195f, 184f),
-            new Vector2(0.10f, 0.91f), new Vector2(0.18f, 0.102f));
+        const float topBarY = 0.925f;
+        const float barHeight = 0.070f;
 
-        CreateSheetImage(safeAreaRoot, "Coin Bar", new Rect(508f, 48f, 270f, 108f),
-            new Vector2(0.425f, 0.92f), new Vector2(0.32f, 0.072f));
-        CreateSheetImage(safeAreaRoot, "Coin", new Rect(384f, 38f, 132f, 132f),
-            new Vector2(0.29f, 0.92f), new Vector2(0.105f, 0.064f));
-        CreateOutlinedText(safeAreaRoot, "Campaign Value", (level.number * 125).ToString(), 24, Navy,
-            TextAnchor.MiddleCenter, new Vector2(0.425f, 0.92f), new Vector2(0.17f, 0.046f), bodyFont, Color.white, 1.4f);
+        // 1. Commander Avatar Card: Clean rect without bottom-right artifact, aligned to topBarY
+        CreateSheetImage(safeAreaRoot, "Commander", new Rect(18f, 14f, 178f, 163f),
+            new Vector2(0.095f, topBarY), new Vector2(0.106f, barHeight));
 
+        // 2. Coin Bar: Pill container at topBarY
+        Image coinBar = CreateSheetImage(safeAreaRoot, "Coin Bar", new Rect(508f, 48f, 270f, 108f),
+            new Vector2(0.380f, topBarY), new Vector2(0.265f, barHeight));
+
+        // Coin Icon: Parented to coinBar on the left, sized to balance with heart
+        CreateSheetImage(coinBar.transform, "Coin Icon", new Rect(384f, 38f, 132f, 132f),
+            new Vector2(0.06f, 0.50f), new Vector2(0.38f, 1.12f));
+
+        // Coin Value: Crisp dark navy font without outline, centered in cream area between coin and + button
+        CreateText(coinBar.transform, "Coin Value", (level.number * 125).ToString(), 22, Navy,
+            TextAnchor.MiddleCenter, new Vector2(0.465f, 0.50f), new Vector2(0.40f, 0.65f), bodyFont);
+
+        // 3. Lives Bar: Pill container at topBarY
         int lives = WarfestSession.Lives;
-        CreateSheetImage(safeAreaRoot, "Lives Bar", new Rect(775f, 43f, 276f, 119f),
-            new Vector2(0.715f, 0.92f), new Vector2(0.27f, 0.071f));
-        lifeCountText = CreateOutlinedText(safeAreaRoot, "Life Count", lives.ToString(), 25, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.665f, 0.922f), new Vector2(0.07f, 0.046f), headingFont, Navy, 1.5f);
-        lifeStatusText = CreateText(safeAreaRoot, "Life Status", WarfestSession.LivesFull ? "FULL" : WarfestSession.LifeTimerText, 18, DeepGreen,
-            TextAnchor.MiddleCenter, new Vector2(0.79f, 0.92f), new Vector2(0.13f, 0.04f), bodyFont);
+        Image livesBar = CreateSheetImage(safeAreaRoot, "Lives Bar", new Rect(775f, 43f, 276f, 119f),
+            new Vector2(0.685f, topBarY), new Vector2(0.265f, barHeight));
+        lifeCountText = CreateOutlinedText(livesBar.transform, "Life Count", lives.ToString(), 24, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.208f, 0.510f), new Vector2(0.28f, 0.65f), headingFont, Navy, 1.5f);
+        lifeStatusText = CreateText(livesBar.transform, "Life Status", WarfestSession.LivesFull ? "FULL" : WarfestSession.LifeTimerText, 17, DeepGreen,
+            TextAnchor.MiddleCenter, new Vector2(0.672f, 0.505f), new Vector2(0.56f, 0.60f), bodyFont);
 
-        CreateSheetImage(safeAreaRoot, "Settings", new Rect(1144f, 46f, 100f, 108f),
-            new Vector2(0.925f, 0.92f), new Vector2(0.09f, 0.062f));
+        // 4. Settings Gear Icon at topBarY
+        Button settingsBtn = CreateSheetButton(safeAreaRoot, "Settings", new Rect(1144f, 46f, 100f, 108f),
+            new Vector2(0.920f, topBarY), new Vector2(0.108f, barHeight));
+        settingsBtn.onClick.AddListener(ToggleSettingsFlyout);
     }
 
     private void BuildWorldDecorations()
@@ -295,7 +334,11 @@ public sealed class WarfestMainMenu : MonoBehaviour
         else
         {
             deploy.interactable = WarfestSession.Lives > 0;
-            deploy.onClick.AddListener(() => WarfestSession.LoadLevel(WarfestSession.SelectedLevel));
+            deploy.onClick.AddListener(() =>
+            {
+                StopMenuAudio();
+                WarfestLoadingScreen.ShowAndLoad(WarfestSession.SelectedLevel);
+            });
 
             // Difficulty rides on its own recessed chip across the top of the green plate; the
             // level number then reads large and centered underneath it, matching the reference.
@@ -512,5 +555,158 @@ public sealed class WarfestMainMenu : MonoBehaviour
         rect.anchorMax = center + size * 0.5f;
         rect.offsetMin = Vector2.zero;
         rect.offsetMax = Vector2.zero;
+    }
+
+    private void StartMenuAudio()
+    {
+        if (!Application.isPlaying) return;
+
+        WarfestAudio.StopGameplayAudio();
+
+        if (menuMusicSource == null)
+        {
+            GameObject audioObj = new GameObject("Main Menu Music", typeof(AudioSource));
+            audioObj.transform.SetParent(transform, false);
+            menuMusicSource = audioObj.GetComponent<AudioSource>();
+        }
+
+        AudioClip clip = WarfestAudio.GetEverytimeClip();
+        if (clip != null)
+        {
+            menuMusicSource.clip = clip;
+            menuMusicSource.playOnAwake = false;
+            menuMusicSource.loop = true;
+            menuMusicSource.spatialBlend = 0f;
+            menuMusicSource.volume = 0.38f;
+            menuMusicSource.mute = !WarfestAudio.MusicEnabled;
+            if (!menuMusicSource.isPlaying)
+            {
+                menuMusicSource.Play();
+            }
+        }
+    }
+
+    private void StopMenuAudio()
+    {
+        if (menuMusicSource != null)
+        {
+            menuMusicSource.Stop();
+        }
+    }
+
+    private void BuildSettingsFlyout()
+    {
+        GameObject flyoutObj = new GameObject("Settings Flyout", typeof(RectTransform));
+        flyoutObj.transform.SetParent(safeAreaRoot, false);
+        RectTransform flyout = flyoutObj.GetComponent<RectTransform>();
+        SetRect(flyout, new Vector2(0.5f, 0.5f), Vector2.one);
+        settingsFlyout = flyoutObj;
+
+        // Dimmed backdrop tap
+        GameObject backdropObj = new GameObject("Settings Backdrop", typeof(RectTransform), typeof(Image), typeof(Button));
+        backdropObj.transform.SetParent(flyout, false);
+        SetRect(backdropObj.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), Vector2.one);
+        Image backdropImage = backdropObj.GetComponent<Image>();
+        backdropImage.color = new Color(0.02f, 0.05f, 0.10f, 0.65f);
+        Button backdropBtn = backdropObj.GetComponent<Button>();
+        backdropBtn.onClick.AddListener(ToggleSettingsFlyout);
+
+        // Dialog container card
+        RectTransform card = CreateContainer(flyout, "Settings Card", new Vector2(0.5f, 0.50f), new Vector2(0.74f, 0.30f));
+        CreateSheetImage(card, "Cream Frame", new Rect(8f, 540f, 441f, 305f), new Vector2(0.5f, 0.5f), Vector2.one);
+
+        // Title: "SETTINGS"
+        CreateOutlinedText(card, "Settings Title", "SETTINGS", 28, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.82f), new Vector2(0.85f, 0.22f), headingFont, DeepGreen, 2f);
+
+        // Sound Toggle Button
+        Button sound = CreateAudioToggleButton(card, "Sound Toggle",
+            WarfestAudio.GetSoundIconSprite(), new Vector2(0.35f, 0.44f), new Vector2(0.24f, 0.44f), out soundButtonBackground);
+        sound.onClick.AddListener(ToggleSound);
+        CreateOutlinedText(card, "Sound Label", "SOUND", 16, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.35f, 0.16f), new Vector2(0.30f, 0.18f), bodyFont, Navy, 1.2f);
+
+        // Music Toggle Button
+        Button music = CreateAudioToggleButton(card, "Music Toggle",
+            WarfestAudio.GetMusicIconSprite(), new Vector2(0.65f, 0.44f), new Vector2(0.24f, 0.44f), out musicButtonBackground);
+        music.onClick.AddListener(ToggleMusic);
+        CreateOutlinedText(card, "Music Label", "MUSIC", 16, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.65f, 0.16f), new Vector2(0.30f, 0.18f), bodyFont, Navy, 1.2f);
+
+        settingsFlyout.SetActive(false);
+        RefreshSettingsButtons();
+    }
+
+    private Button CreateAudioToggleButton(Transform parent, string name, Sprite iconSprite,
+        Vector2 center, Vector2 size, out Image background)
+    {
+        GameObject gameObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+        gameObject.transform.SetParent(parent, false);
+        SetRect(gameObject.GetComponent<RectTransform>(), center, size);
+        background = gameObject.GetComponent<Image>();
+        background.sprite = WarfestAudio.GetSettingsEnabledSprite();
+        background.preserveAspect = true;
+
+        Button button = gameObject.GetComponent<Button>();
+        ColorBlock colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1f, 1f, 1f, 0.92f);
+        colors.pressedColor = new Color(0.82f, 0.86f, 0.9f, 1f);
+        colors.selectedColor = colors.highlightedColor;
+        button.colors = colors;
+
+        GameObject iconObj = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+        iconObj.transform.SetParent(gameObject.transform, false);
+        SetRect(iconObj.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(0.68f, 0.68f));
+        Image icon = iconObj.GetComponent<Image>();
+        icon.sprite = iconSprite;
+        icon.color = Color.white;
+        icon.preserveAspect = true;
+        icon.raycastTarget = false;
+
+        return button;
+    }
+
+    private void ToggleSettingsFlyout()
+    {
+        if (settingsFlyout == null) return;
+        settingsOpen = !settingsOpen;
+        settingsFlyout.SetActive(settingsOpen);
+        if (settingsOpen)
+        {
+            RefreshSettingsButtons();
+        }
+    }
+
+    private void ToggleSound()
+    {
+        WarfestAudio.SoundEnabled = !WarfestAudio.SoundEnabled;
+        RefreshSettingsButtons();
+    }
+
+    private void ToggleMusic()
+    {
+        WarfestAudio.MusicEnabled = !WarfestAudio.MusicEnabled;
+        if (menuMusicSource != null)
+        {
+            menuMusicSource.mute = !WarfestAudio.MusicEnabled;
+        }
+        RefreshSettingsButtons();
+    }
+
+    private void RefreshSettingsButtons()
+    {
+        if (soundButtonBackground != null)
+        {
+            soundButtonBackground.sprite = WarfestAudio.SoundEnabled
+                ? WarfestAudio.GetSettingsEnabledSprite()
+                : WarfestAudio.GetSettingsDisabledSprite();
+        }
+        if (musicButtonBackground != null)
+        {
+            musicButtonBackground.sprite = WarfestAudio.MusicEnabled
+                ? WarfestAudio.GetSettingsEnabledSprite()
+                : WarfestAudio.GetSettingsDisabledSprite();
+        }
     }
 }

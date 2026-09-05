@@ -122,8 +122,9 @@ public sealed class WarfestGameController : MonoBehaviour
     private const float ShotRadius = 0.16f;
     private const float ShotSpeed = 17f;
     private const float ShotLifetime = 4f;
-    private const float BlockSizeMultiplier = 1.20f;
-    private const float CannonVerticalOffsetPixels = 30f;
+    private const float BlockSizeMultiplier = 1.50f;
+    private const float CannonBasePositionY = -4.72f;
+    private const float CannonPivotOffsetY = 0.52f;
     private const float FallenTargetCheckInterval = 0.10f;
     private const float BoosterUiUpdateInterval = 0.05f;
     private const float InfiniteBallsDurationSeconds = 3f;
@@ -142,8 +143,8 @@ private void Start()
         font = bodyFont != null ? bodyFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         if (headingFont == null) headingFont = font;
         if (bodyFont == null) bodyFont = font;
-        soundEnabled = PlayerPrefs.GetInt(SoundEnabledKey, 1) == 1;
-        musicEnabled = PlayerPrefs.GetInt(MusicEnabledKey, 1) == 1;
+        soundEnabled = WarfestAudio.SoundEnabled;
+        musicEnabled = WarfestAudio.MusicEnabled;
         LoadOriginalSprites();
         EnsureEventSystem();
         EnsureCamera();
@@ -188,31 +189,11 @@ private void LoadOriginalSprites()
             settingsPanelSprite = CreateSheetSprite(panelTexture, ScaleSheetRect(new Rect(930f, 0f, 410f, 404f), panelScaleX, panelScaleY), "Settings Button");
         }
 
-        Texture2D settingsIcons = Resources.Load<Texture2D>("settings_icons");
-        if (settingsIcons != null)
-        {
-            float iconScaleX = settingsIcons.width / 1536f;
-            float iconScaleY = settingsIcons.height / 1024f;
-            leaveIconSprite = CreateSheetSprite(settingsIcons,
-                ScaleSheetRect(new Rect(0f, 512f, 768f, 512f), iconScaleX, iconScaleY), "Leave Icon");
-            soundIconSprite = CreateSheetSprite(settingsIcons,
-                ScaleSheetRect(new Rect(768f, 512f, 768f, 512f), iconScaleX, iconScaleY), "Sound Icon");
-            musicIconSprite = CreateSheetSprite(settingsIcons,
-                ScaleSheetRect(new Rect(0f, 0f, 768f, 512f), iconScaleX, iconScaleY), "Music Icon");
-            // The fourth cell is the settings gear. The main HUD already supplies its own settings
-            // button art, so that cell is deliberately not created or used here.
-        }
-
-        Texture2D settingsBackground = Resources.Load<Texture2D>("settings_background");
-        if (settingsBackground != null)
-        {
-            float backgroundScaleX = settingsBackground.width / 500f;
-            float backgroundScaleY = settingsBackground.height / 295f;
-            settingsDisabledSprite = CreateSheetSprite(settingsBackground,
-                ScaleSheetRect(new Rect(0f, 0f, 250f, 295f), backgroundScaleX, backgroundScaleY), "Settings Disabled");
-            settingsEnabledSprite = CreateSheetSprite(settingsBackground,
-                ScaleSheetRect(new Rect(250f, 0f, 250f, 295f), backgroundScaleX, backgroundScaleY), "Settings Enabled");
-        }
+        leaveIconSprite = WarfestAudio.GetLeaveIconSprite();
+        soundIconSprite = WarfestAudio.GetSoundIconSprite();
+        musicIconSprite = WarfestAudio.GetMusicIconSprite();
+        settingsDisabledSprite = WarfestAudio.GetSettingsDisabledSprite();
+        settingsEnabledSprite = WarfestAudio.GetSettingsEnabledSprite();
         blockSprites = Resources.LoadAll<Sprite>("blocks");
         boosterSprites = Resources.LoadAll<Sprite>("boosters");
 
@@ -500,9 +481,26 @@ private void EnsureCamera()
         gameplayCamera.backgroundColor = LightBackground;
     }
 
+    private void ClearExistingWorld()
+    {
+        UnityEngine.SceneManagement.Scene activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+        if (!activeScene.isLoaded) return;
+        GameObject[] roots = activeScene.GetRootGameObjects();
+        for (int i = roots.Length - 1; i >= 0; i--)
+        {
+            GameObject root = roots[i];
+            if (root == null) continue;
+            if (root.name.StartsWith("Runtime Level") || root.name == "Gameplay Background")
+            {
+                if (Application.isPlaying) Destroy(root);
+                else DestroyImmediate(root);
+            }
+        }
+    }
+
 private void BuildWorld()
     {
-
+        ClearExistingWorld();
         worldRoot = new GameObject("Runtime Level // " + level.number.ToString("00")).transform;
         CreateBackground();
         bool isModelLevel = level.number >= 1 && level.number <= WarfestLevelCatalog.AuthoredLevelCount;
@@ -780,12 +778,11 @@ private void CreatePistol()
     {
         if (pistolSprite == null) return;
 
-        float cannonDownOffset = ScreenPixelsToWorldHeight(CannonVerticalOffsetPixels);
-        CreateCannonBase(cannonDownOffset);
+        CreateCannonBase();
         pistolPivot = new GameObject("Pistol Pivot").transform;
         pistolPivot.SetParent(worldRoot, false);
         pistolPivot.localScale = new Vector3(1.7f, 1.7f, 1f);
-        pistolPivot.position = new Vector3(0f, -3.5f - cannonDownOffset, -1f);
+        pistolPivot.position = new Vector3(0f, CannonBasePositionY + CannonPivotOffsetY, -1f);
 
         pistolVisual = CreateSprite(
             "Pistol",
@@ -825,21 +822,22 @@ private void CreatePistol()
         aimLine.enabled = false;
     }
 
-private void CreateCannonBase(float downOffset)
+private void CreateCannonBase()
     {
         if (pistolBaseSprite == null) return;
         CreateSprite(
             "Pistol Base",
             pistolBaseSprite,
-            new Vector3(0f, -4.02f - downOffset, -0.25f),
+            new Vector3(0f, CannonBasePositionY, -0.25f),
             new Vector2(0.46f, 0.46f),
             4);
     }
 
     private float ScreenPixelsToWorldHeight(float pixels)
     {
-        if (gameplayCamera == null || Screen.height <= 0) return pixels * (12.7f / 844f);
-        return pixels * (gameplayCamera.orthographicSize * 2f / Screen.height);
+        const float referenceDesignHeight = 844f;
+        float worldCameraHeight = gameplayCamera != null ? gameplayCamera.orthographicSize * 2f : 12.7f;
+        return pixels * (worldCameraHeight / referenceDesignHeight);
     }
 
     private void CreateBasePad(string name, Vector3 position, Vector2 scale, Color color)
@@ -1244,9 +1242,21 @@ public void RegisterTargetBroken(WarfestTarget target)
 
     private IEnumerator CompleteLevelAfterDelay()
     {
-        yield return new WaitForSeconds(0.8f);
-        WarfestSession.CompleteLevel(level.number - 1);
+        yield return new WaitForSeconds(0.45f);
+        if (musicSource != null) musicSource.Stop();
+        WarfestAudio.StopGameplayAudio();
+        WarfestVictoryScreen.Show(level.number - 1);
     }
+
+#if UNITY_EDITOR
+    [ContextMenu("Test Victory Screen")]
+    private void TestVictoryScreen()
+    {
+        if (musicSource != null) musicSource.Stop();
+        WarfestAudio.StopGameplayAudio();
+        WarfestVictoryScreen.Show(level.number > 0 ? level.number - 1 : 0);
+    }
+#endif
 
     private void CreateExplosionVfx(Vector2 center)
     {
@@ -1364,6 +1374,13 @@ public void RegisterTargetBroken(WarfestTarget target)
 
     private void BuildHud()
     {
+        GameObject existingCanvas = GameObject.Find("Game HUD Canvas");
+        if (existingCanvas != null)
+        {
+            if (Application.isPlaying) Destroy(existingCanvas);
+            else DestroyImmediate(existingCanvas);
+        }
+
         hudCanvas = CreateCanvas("Game HUD Canvas");
         RectTransform root = hudCanvas.transform as RectTransform;
         safeAreaRoot = CreateSafeAreaRoot(root);
@@ -1373,14 +1390,14 @@ public void RegisterTargetBroken(WarfestTarget target)
         Color navy = new Color(0.075f, 0.19f, 0.47f, 1f);
 
         CreateSpriteImage(safeAreaRoot, "Balls Card", ballsPanelSprite, cream,
-            new Vector2(0.145f, 0.912f), new Vector2(0.255f, 0.145f), false);
+            new Vector2(0.145f, 0.938f), new Vector2(0.240f, 0.096f), false);
         CreateSpriteImage(safeAreaRoot, "Balls Header", blueLabelSprite, blue,
-            new Vector2(0.145f, 0.969f), new Vector2(0.205f, 0.052f), false);
+            new Vector2(0.145f, 0.968f), new Vector2(0.190f, 0.046f), false);
         Text ballsHeader = CreateText(safeAreaRoot, "Balls Header Label", "BALLS", 17, Color.white,
-            TextAnchor.MiddleCenter, new Vector2(0.145f, 0.969f), new Vector2(0.18f, 0.035f), headingFont);
+            TextAnchor.MiddleCenter, new Vector2(0.145f, 0.968f), new Vector2(0.18f, 0.035f), headingFont);
         AddTextOutline(ballsHeader, navy, new Vector2(1.4f, -1.4f));
         ballsText = CreateText(safeAreaRoot, "Balls Count", remainingBalls.ToString("00"), 39, navy,
-            TextAnchor.MiddleCenter, new Vector2(0.145f, 0.912f), new Vector2(0.19f, 0.078f), headingFont);
+            TextAnchor.MiddleCenter, new Vector2(0.145f, 0.918f), new Vector2(0.180f, 0.054f), headingFont);
         AddTextOutline(ballsText, Color.white, new Vector2(1.2f, -1.2f));
 
         Button menu = CreateSpriteButton(safeAreaRoot, "Settings Menu", settingsPanelSprite,
@@ -1396,17 +1413,28 @@ public void RegisterTargetBroken(WarfestTarget target)
         RectTransform flyout = CreateRect(safeAreaRoot, "Settings Flyout", new Vector2(0.5f, 0.5f), Vector2.one);
         settingsFlyout = flyout.gameObject;
 
+        Vector2 buttonSize = new Vector2(0.145f, 0.070f);
+        const float flyoutX = 0.865f;
+
         Button leave = CreateSettingsIconButton(flyout, "Leave Level", settingsDisabledSprite, leaveIconSprite,
-            new Vector2(0.865f, 0.79f), new Vector2(0.13f, 0.14f), out _);
+            new Vector2(flyoutX, 0.852f), buttonSize, out _);
         leave.onClick.AddListener(ShowLeaveConfirmation);
 
         Button sound = CreateSettingsIconButton(flyout, "Sound Toggle", settingsEnabledSprite, soundIconSprite,
-            new Vector2(0.865f, 0.63f), new Vector2(0.13f, 0.14f), out soundButtonBackground);
+            new Vector2(flyoutX, 0.772f), buttonSize, out soundButtonBackground);
         sound.onClick.AddListener(ToggleSound);
 
         Button music = CreateSettingsIconButton(flyout, "Music Toggle", settingsEnabledSprite, musicIconSprite,
-            new Vector2(0.865f, 0.47f), new Vector2(0.13f, 0.14f), out musicButtonBackground);
+            new Vector2(flyoutX, 0.692f), buttonSize, out musicButtonBackground);
         music.onClick.AddListener(ToggleMusic);
+
+        // Backdrop click / tap outside closes the menu without leaving.
+        Button backdrop = CreateSpriteButton(flyout, "Settings Backdrop", null,
+            new Vector2(0.5f, 0.5f), Vector2.one);
+        backdrop.transform.SetAsFirstSibling();
+        Image backdropImage = backdrop.GetComponent<Image>();
+        backdropImage.color = Color.clear;
+        backdrop.onClick.AddListener(ToggleSettingsMenu);
 
         RectTransform confirmation = CreateRect(safeAreaRoot, "Leave Confirmation", new Vector2(0.5f, 0.5f), Vector2.one);
         leaveConfirmation = confirmation.gameObject;
@@ -1451,7 +1479,7 @@ public void RegisterTargetBroken(WarfestTarget target)
         button.colors = colors;
 
         Image icon = CreateSpriteImage(gameObject.transform, "Icon", iconSprite, Color.white,
-            new Vector2(0.5f, 0.52f), new Vector2(0.74f, 0.68f), true);
+            new Vector2(0.5f, 0.5f), new Vector2(0.56f, 0.56f), true);
         icon.raycastTarget = false;
         return button;
     }
@@ -1489,6 +1517,8 @@ public void RegisterTargetBroken(WarfestTarget target)
         settingsOpen = false;
         if (settingsFlyout != null) settingsFlyout.SetActive(false);
         if (leaveConfirmation != null) leaveConfirmation.SetActive(false);
+        if (musicSource != null) musicSource.Stop();
+        WarfestAudio.StopGameplayAudio();
         WarfestSession.ConsumeLife();
         CreateFailurePanel(false, "MISSION ABANDONED");
         StartCoroutine(ReturnToMenuAfterFailure());
@@ -1496,30 +1526,30 @@ public void RegisterTargetBroken(WarfestTarget target)
 
     private IEnumerator ReturnToMenuAfterFailure()
     {
+        if (musicSource != null) musicSource.Stop();
+        WarfestAudio.StopGameplayAudio();
         yield return new WaitForSecondsRealtime(1.25f);
         WarfestSession.ReturnToMenu();
     }
 
     private void ToggleSound()
     {
-        soundEnabled = !soundEnabled;
-        PlayerPrefs.SetInt(SoundEnabledKey, soundEnabled ? 1 : 0);
-        PlayerPrefs.Save();
-        ApplyAudioPreferences();
+        WarfestAudio.SoundEnabled = !WarfestAudio.SoundEnabled;
+        soundEnabled = WarfestAudio.SoundEnabled;
         RefreshSettingsButtons();
     }
 
     private void ToggleMusic()
     {
-        musicEnabled = !musicEnabled;
-        PlayerPrefs.SetInt(MusicEnabledKey, musicEnabled ? 1 : 0);
-        PlayerPrefs.Save();
-        ApplyAudioPreferences();
+        WarfestAudio.MusicEnabled = !WarfestAudio.MusicEnabled;
+        musicEnabled = WarfestAudio.MusicEnabled;
         RefreshSettingsButtons();
     }
 
     private void RefreshSettingsButtons()
     {
+        soundEnabled = WarfestAudio.SoundEnabled;
+        musicEnabled = WarfestAudio.MusicEnabled;
         if (soundButtonBackground != null)
         {
             soundButtonBackground.sprite = soundEnabled ? settingsEnabledSprite : settingsDisabledSprite;
@@ -1532,19 +1562,9 @@ public void RegisterTargetBroken(WarfestTarget target)
 
     private void ApplyAudioPreferences()
     {
-        AudioSource[] sources = Object.FindObjectsByType<AudioSource>(FindObjectsInactive.Include);
-        foreach (AudioSource source in sources)
-        {
-            if (source == null) continue;
-            string sourceName = source.gameObject.name.ToLowerInvariant();
-            bool isMusic = source.loop || sourceName.Contains("music") || sourceName.Contains("theme");
-            source.mute = isMusic ? !musicEnabled : !soundEnabled;
-        }
+        WarfestAudio.ApplyAudioPreferences();
     }
 
-    // The project does not yet include licensed sound files, so these compact procedural clips
-    // provide an immediately playable sample set. They are created once per game scene and use
-    // ordinary AudioSources, which keeps the existing sound/music toggles authoritative.
     private void BuildAudio()
     {
         GameObject audioRoot = new GameObject("Gameplay Audio");
@@ -1563,15 +1583,23 @@ public void RegisterTargetBroken(WarfestTarget target)
         musicSource.playOnAwake = false;
         musicSource.loop = true;
         musicSource.spatialBlend = 0f;
-        musicSource.volume = 0.32f;
+        musicSource.volume = 0.35f;
 
         shootClip = CreateShootClip();
-        blockPopClip = CreateBlockPopClip();
-        // Keep a managed reference as well as the AudioSource reference. Runtime-created clips
-        // are otherwise eligible for unloading on some Unity targets during a scene refresh.
-        musicClip = CreateMusicClip();
+        blockPopClip = WarfestAudio.GetMatchClip();
+        if (blockPopClip == null) blockPopClip = CreateBlockPopClip();
+
+        musicClip = WarfestAudio.GetLevelClip();
+        if (musicClip == null) musicClip = CreateMusicClip();
         musicSource.clip = musicClip;
+        musicSource.mute = !WarfestAudio.MusicEnabled;
         musicSource.Play();
+    }
+
+    private void OnDestroy()
+    {
+        if (musicSource != null) musicSource.Stop();
+        WarfestAudio.StopGameplayAudio();
     }
 
     private void PlayShootSound()
@@ -2137,6 +2165,33 @@ private void CreateBackground()
             -100);
         background.GetComponent<SpriteRenderer>().color = Color.white;
     }
+
+#if UNITY_EDITOR
+    [ContextMenu("Build Edit Mode Preview")]
+    public void BuildEditModePreview()
+    {
+        font = bodyFont != null ? bodyFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (headingFont == null) headingFont = font;
+        if (bodyFont == null) bodyFont = font;
+        LoadOriginalSprites();
+        EnsureEventSystem();
+        EnsureCamera();
+        level = WarfestLevelCatalog.Get(0);
+        ballCapacity = WarfestSession.GetBallAllowance(0);
+        remainingBalls = ballCapacity;
+        BuildWorld();
+        BuildHud();
+        RefreshHud();
+    }
+
+    [ContextMenu("Clear Edit Mode Preview")]
+    public void ClearEditModePreview()
+    {
+        ClearExistingWorld();
+        GameObject existingCanvas = GameObject.Find("Game HUD Canvas");
+        if (existingCanvas != null) DestroyImmediate(existingCanvas);
+    }
+#endif
 }
 
 public sealed class WarfestTarget : MonoBehaviour

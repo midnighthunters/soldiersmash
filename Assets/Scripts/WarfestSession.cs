@@ -30,6 +30,7 @@ public static class WarfestSession
     private const string CampaignCompleteKey = "Warfest.CampaignComplete";
     private const string BoosterCountKeyPrefix = "Warfest.Booster.";
     private static int selectedLevel = -1;
+    public static bool HasShownSplash { get; set; } = false;
 
     // True once the player has cleared the final level. The menu uses this to swap the
     // "Deploy Mission" card into a disabled "Coming Soon" state instead of replaying level 100.
@@ -219,8 +220,9 @@ public static void SelectLevel(int zeroBasedLevel)
         SceneManager.LoadScene("Game");
     }
 
-public static void CompleteLevel(int zeroBasedLevel)
+    public static void CompleteLevel(int zeroBasedLevel)
     {
+        WarfestAudio.StopGameplayAudio();
         int nextLevel = zeroBasedLevel + 1;
         if (nextLevel >= LevelCount)
         {
@@ -246,6 +248,7 @@ public static void CompleteLevel(int zeroBasedLevel)
 
     public static void ReturnToMenu()
     {
+        WarfestAudio.StopGameplayAudio();
         SceneManager.LoadScene("MainMenu");
     }
 }
