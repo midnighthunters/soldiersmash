@@ -20,6 +20,14 @@ public sealed class WarfestSplashScreen : MonoBehaviour
 
     public static WarfestSplashScreen Show(Transform parent = null, Action onComplete = null)
     {
+        // The splash screen must strictly only appear once when the app is first opened
+        if (WarfestSession.HasShownSplash)
+        {
+            onComplete?.Invoke();
+            return null;
+        }
+        WarfestSession.HasShownSplash = true;
+
         // Avoid duplicate splash screens
         WarfestSplashScreen existing = FindAnyObjectByType<WarfestSplashScreen>();
         if (existing != null) return existing;
@@ -37,7 +45,7 @@ public sealed class WarfestSplashScreen : MonoBehaviour
         CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        scaler.matchWidthOrHeight = 0.5f;
+        scaler.matchWidthOrHeight = 1.0f;
         scaler.referenceResolution = Screen.width >= Screen.height ? new Vector2(844f, 390f) : new Vector2(390f, 844f);
 
         WarfestSplashScreen splash = canvasObj.AddComponent<WarfestSplashScreen>();
@@ -50,10 +58,19 @@ public sealed class WarfestSplashScreen : MonoBehaviour
     {
         canvasGroup = GetComponent<CanvasGroup>();
 
+        Rect viewport = WarfestDeviceViewport.GetNormalizedViewport();
+        GameObject frameObj = new GameObject("iPhone Frame", typeof(RectTransform));
+        frameObj.transform.SetParent(root, false);
+        RectTransform frameRect = frameObj.GetComponent<RectTransform>();
+        frameRect.anchorMin = new Vector2(viewport.xMin, viewport.yMin);
+        frameRect.anchorMax = new Vector2(viewport.xMax, viewport.yMax);
+        frameRect.offsetMin = Vector2.zero;
+        frameRect.offsetMax = Vector2.zero;
+
         // 1. Splash Background Image
         Sprite splashSprite = WarfestMiscArt.GetRandomSplashScreen();
         GameObject imgObj = new GameObject("Splash Image", typeof(RectTransform), typeof(Image), typeof(AspectRatioFitter));
-        imgObj.transform.SetParent(root, false);
+        imgObj.transform.SetParent(frameRect, false);
         imageRect = imgObj.GetComponent<RectTransform>();
         imageRect.anchorMin = Vector2.zero;
         imageRect.anchorMax = Vector2.one;
@@ -75,7 +92,7 @@ public sealed class WarfestSplashScreen : MonoBehaviour
 
         // 2. Subtle Bottom Vignette for UI readability
         GameObject vignetteObj = new GameObject("Bottom Vignette", typeof(RectTransform), typeof(Image));
-        vignetteObj.transform.SetParent(root, false);
+        vignetteObj.transform.SetParent(frameRect, false);
         RectTransform vigRect = vignetteObj.GetComponent<RectTransform>();
         vigRect.anchorMin = new Vector2(0f, 0f);
         vigRect.anchorMax = new Vector2(1f, 0.40f);
@@ -90,7 +107,7 @@ public sealed class WarfestSplashScreen : MonoBehaviour
 
         // Brand Subtitle Text
         GameObject brandObj = new GameObject("Brand Label", typeof(RectTransform), typeof(Text));
-        brandObj.transform.SetParent(root, false);
+        brandObj.transform.SetParent(frameRect, false);
         RectTransform brandRect = brandObj.GetComponent<RectTransform>();
         brandRect.anchorMin = new Vector2(0.5f, 0.165f);
         brandRect.anchorMax = new Vector2(0.5f, 0.165f);
@@ -110,7 +127,7 @@ public sealed class WarfestSplashScreen : MonoBehaviour
 
         // Status Label Text (Positioned clearly above loading bar)
         GameObject statusObj = new GameObject("Status Label", typeof(RectTransform), typeof(Text));
-        statusObj.transform.SetParent(root, false);
+        statusObj.transform.SetParent(frameRect, false);
         RectTransform statusRect = statusObj.GetComponent<RectTransform>();
         statusRect.anchorMin = new Vector2(0.5f, 0.122f);
         statusRect.anchorMax = new Vector2(0.5f, 0.122f);
@@ -130,7 +147,7 @@ public sealed class WarfestSplashScreen : MonoBehaviour
 
         // 3. Hypercasual 3D Capsule Loading Track
         GameObject trackObj = new GameObject("Loading Track", typeof(RectTransform), typeof(Image));
-        trackObj.transform.SetParent(root, false);
+        trackObj.transform.SetParent(frameRect, false);
         RectTransform trackRect = trackObj.GetComponent<RectTransform>();
         trackRect.anchorMin = new Vector2(0.5f, 0.085f);
         trackRect.anchorMax = new Vector2(0.5f, 0.085f);
@@ -180,7 +197,7 @@ public sealed class WarfestSplashScreen : MonoBehaviour
 
         // Interactive Fullscreen Button for Tap-to-Skip
         GameObject btnObj = new GameObject("Skip Trigger", typeof(RectTransform), typeof(Button), typeof(Image));
-        btnObj.transform.SetParent(root, false);
+        btnObj.transform.SetParent(frameRect, false);
         RectTransform btnRect = btnObj.GetComponent<RectTransform>();
         btnRect.anchorMin = Vector2.zero;
         btnRect.anchorMax = Vector2.one;

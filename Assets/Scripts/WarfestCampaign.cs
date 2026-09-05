@@ -160,6 +160,10 @@ public static partial class WarfestLevelCatalog
 
     public static int CampaignTableCount(int zeroBasedLevel)
     {
+        if (zeroBasedLevel >= 100 && zeroBasedLevel < 200)
+        {
+            return CampaignTableCount101to200(zeroBasedLevel);
+        }
         int levelNumber = Mathf.Clamp(zeroBasedLevel, 0, 99) + 1;
         if (levelNumber >= 20 && levelNumber <= 50) return 2;
         if (ThreeTableLevels.Contains(levelNumber)) return 3;
@@ -205,13 +209,22 @@ public static partial class WarfestLevelCatalog
 
     public static string CampaignName(int zeroBasedLevel)
     {
+        if (zeroBasedLevel >= 100 && zeroBasedLevel < 200)
+        {
+            return CampaignName101to200(zeroBasedLevel);
+        }
         return CampaignNames[Mathf.Clamp(zeroBasedLevel, 0, 99)];
     }
 
-public static int CampaignBlockCount(int zeroBasedLevel)
+    public static int CampaignBlockCount(int zeroBasedLevel)
     {
         int referenceCount = ReferenceLayoutBlockCount(zeroBasedLevel);
         if (referenceCount >= 0) return referenceCount;
+
+        if (zeroBasedLevel >= 100 && zeroBasedLevel < 200)
+        {
+            return CampaignBlockCount101to200(zeroBasedLevel);
+        }
 
         int[] c = CampaignCompositionFor(zeroBasedLevel);
         int sum = 0;
@@ -446,13 +459,13 @@ public static int[] CampaignCompositionFor(int zeroBasedLevel)
 
     private static void BuildCampaignLayout(int zeroBasedLevel, List<ModelBlockSpec> blocks)
     {
-        EnsureCampaign(Mathf.Clamp(zeroBasedLevel, 0, 99));
+        EnsureCampaign(Mathf.Clamp(zeroBasedLevel, 0, 199));
         blocks.AddRange(_cacheBlocks);
     }
 
     private static void BuildCampaignTables(int zeroBasedLevel, List<ModelTableSpec> tables)
     {
-        EnsureCampaign(Mathf.Clamp(zeroBasedLevel, 0, 99));
+        EnsureCampaign(Mathf.Clamp(zeroBasedLevel, 0, 199));
         tables.AddRange(_cacheTables);
     }
 
@@ -520,6 +533,13 @@ private static void BuildRequestedOpeningLayout(int level, List<ModelBlockSpec> 
 
 private static void ComputeCampaign(int level, List<ModelBlockSpec> blocks, List<ModelTableSpec> tables)
     {
+        if (level >= 100 && level < 200)
+        {
+            BuildCampaignLevel101To200(level, blocks, tables);
+            FitLayoutToScreen(blocks, tables);
+            return;
+        }
+
         var slots = GetArrangement(level);
 
         // Preserve the explicitly requested opening layouts before routing Levels 4+ through

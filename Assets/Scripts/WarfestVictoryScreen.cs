@@ -41,8 +41,8 @@ public sealed class WarfestVictoryScreen : MonoBehaviour
         CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        scaler.matchWidthOrHeight = 0.5f;
-        scaler.referenceResolution = Screen.width >= Screen.height ? new Vector2(844f, 390f) : new Vector2(390f, 844f);
+        scaler.matchWidthOrHeight = 1.0f;
+        scaler.referenceResolution = new Vector2(WarfestDeviceViewport.TargetWidth, WarfestDeviceViewport.TargetHeight);
 
         WarfestAudio.StopGameplayAudio();
         WarfestVictoryScreen victory = canvasObj.AddComponent<WarfestVictoryScreen>();
@@ -57,9 +57,18 @@ public sealed class WarfestVictoryScreen : MonoBehaviour
         canvasGroup = GetComponent<CanvasGroup>();
         audioSource = GetComponent<AudioSource>();
 
+        Rect viewport = WarfestDeviceViewport.GetNormalizedViewport();
+        GameObject frameObj = new GameObject("iPhone Frame", typeof(RectTransform));
+        frameObj.transform.SetParent(root, false);
+        RectTransform frameRect = frameObj.GetComponent<RectTransform>();
+        frameRect.anchorMin = new Vector2(viewport.xMin, viewport.yMin);
+        frameRect.anchorMax = new Vector2(viewport.xMax, viewport.yMax);
+        frameRect.offsetMin = Vector2.zero;
+        frameRect.offsetMax = Vector2.zero;
+
         // 1. Dark Backdrop Overlay & Tap Trigger
         GameObject dimObj = new GameObject("Dark Scrim", typeof(RectTransform), typeof(Image), typeof(Button));
-        dimObj.transform.SetParent(root, false);
+        dimObj.transform.SetParent(frameRect, false);
         RectTransform dimRect = dimObj.GetComponent<RectTransform>();
         dimRect.anchorMin = Vector2.zero;
         dimRect.anchorMax = Vector2.one;
@@ -71,11 +80,11 @@ public sealed class WarfestVictoryScreen : MonoBehaviour
         tapBtn.onClick.AddListener(OnTapContinue);
 
         // 2. Confetti Particle Shower
-        WarfestConfetti.Create(root);
+        WarfestConfetti.Create(frameRect);
 
         // 3. Hero Radial Glow behind Victory character
         GameObject glowObj = new GameObject("Sunburst Glow", typeof(RectTransform), typeof(Image));
-        glowObj.transform.SetParent(root, false);
+        glowObj.transform.SetParent(frameRect, false);
         RectTransform glowRect = glowObj.GetComponent<RectTransform>();
         glowRect.anchorMin = new Vector2(0.5f, 0.5f);
         glowRect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -89,7 +98,7 @@ public sealed class WarfestVictoryScreen : MonoBehaviour
         // 4. Victory Tank Character (victory1.png) - Slides in from LEFT
         Sprite victorySprite = WarfestMiscArt.GetVictorySprite();
         GameObject vicObj = new GameObject("Victory Character", typeof(RectTransform), typeof(Image));
-        vicObj.transform.SetParent(root, false);
+        vicObj.transform.SetParent(frameRect, false);
         victoryRect = vicObj.GetComponent<RectTransform>();
         victoryRect.anchorMin = new Vector2(0.5f, 0.5f);
         victoryRect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -105,7 +114,7 @@ public sealed class WarfestVictoryScreen : MonoBehaviour
         // 5. Game Logo (logo.png) - Slides in from RIGHT, below victory character
         Sprite logoSprite = WarfestMiscArt.GetLogoSprite();
         GameObject logoObj = new GameObject("Game Logo", typeof(RectTransform), typeof(Image));
-        logoObj.transform.SetParent(root, false);
+        logoObj.transform.SetParent(frameRect, false);
         logoRect = logoObj.GetComponent<RectTransform>();
         logoRect.anchorMin = new Vector2(0.5f, 0.5f);
         logoRect.anchorMax = new Vector2(0.5f, 0.5f);

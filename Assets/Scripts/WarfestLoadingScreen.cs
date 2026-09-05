@@ -44,8 +44,8 @@ public sealed class WarfestLoadingScreen : MonoBehaviour
         CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        scaler.matchWidthOrHeight = 0.5f;
-        scaler.referenceResolution = Screen.width >= Screen.height ? new Vector2(844f, 390f) : new Vector2(390f, 844f);
+        scaler.matchWidthOrHeight = 1.0f;
+        scaler.referenceResolution = new Vector2(WarfestDeviceViewport.TargetWidth, WarfestDeviceViewport.TargetHeight);
 
         instance = canvasObj.AddComponent<WarfestLoadingScreen>();
         instance.BuildUI(canvasObj.transform as RectTransform, zeroBasedLevel);
@@ -57,10 +57,19 @@ public sealed class WarfestLoadingScreen : MonoBehaviour
         canvasGroup = GetComponent<CanvasGroup>();
         Font font = WarfestMiscArt.GetCartoonFont();
 
+        Rect viewport = WarfestDeviceViewport.GetNormalizedViewport();
+        GameObject frameObj = new GameObject("iPhone Frame", typeof(RectTransform));
+        frameObj.transform.SetParent(root, false);
+        RectTransform frameRect = frameObj.GetComponent<RectTransform>();
+        frameRect.anchorMin = new Vector2(viewport.xMin, viewport.yMin);
+        frameRect.anchorMax = new Vector2(viewport.xMax, viewport.yMax);
+        frameRect.offsetMin = Vector2.zero;
+        frameRect.offsetMax = Vector2.zero;
+
         // 1. Background Pattern Image
         Sprite bgSprite = WarfestMiscArt.GetLoadingBackground();
         GameObject bgObj = new GameObject("Loading Background", typeof(RectTransform), typeof(Image), typeof(AspectRatioFitter));
-        bgObj.transform.SetParent(root, false);
+        bgObj.transform.SetParent(frameRect, false);
         RectTransform bgRect = bgObj.GetComponent<RectTransform>();
         bgRect.anchorMin = Vector2.zero;
         bgRect.anchorMax = Vector2.one;
@@ -82,7 +91,7 @@ public sealed class WarfestLoadingScreen : MonoBehaviour
 
         // 2. Soft Edge Vignette / Dim for readability
         GameObject vignetteObj = new GameObject("Vignette", typeof(RectTransform), typeof(Image));
-        vignetteObj.transform.SetParent(root, false);
+        vignetteObj.transform.SetParent(frameRect, false);
         RectTransform vigRect = vignetteObj.GetComponent<RectTransform>();
         vigRect.anchorMin = Vector2.zero;
         vigRect.anchorMax = Vector2.one;
@@ -94,7 +103,7 @@ public sealed class WarfestLoadingScreen : MonoBehaviour
 
         // 3. Top Mission Header Badge
         GameObject headerObj = new GameObject("Mission Badge", typeof(RectTransform), typeof(Text));
-        headerObj.transform.SetParent(root, false);
+        headerObj.transform.SetParent(frameRect, false);
         RectTransform headerRect = headerObj.GetComponent<RectTransform>();
         headerRect.anchorMin = new Vector2(0.5f, 0.82f);
         headerRect.anchorMax = new Vector2(0.5f, 0.82f);
@@ -115,7 +124,7 @@ public sealed class WarfestLoadingScreen : MonoBehaviour
         // Mission Sub-heading
         string missionName = WarfestLevelCatalog.CampaignName(zeroBasedLevel);
         GameObject subObj = new GameObject("Mission Name", typeof(RectTransform), typeof(Text));
-        subObj.transform.SetParent(root, false);
+        subObj.transform.SetParent(frameRect, false);
         RectTransform subRect = subObj.GetComponent<RectTransform>();
         subRect.anchorMin = new Vector2(0.5f, 0.77f);
         subRect.anchorMax = new Vector2(0.5f, 0.77f);
@@ -132,7 +141,7 @@ public sealed class WarfestLoadingScreen : MonoBehaviour
         // 4. Character Sprite (Randomly chosen load sprite: load0, load2, load3, load4)
         Sprite loadSprite = WarfestMiscArt.GetRandomLoadingSprite();
         GameObject charObj = new GameObject("Character Image", typeof(RectTransform), typeof(Image));
-        charObj.transform.SetParent(root, false);
+        charObj.transform.SetParent(frameRect, false);
         characterRect = charObj.GetComponent<RectTransform>();
         characterRect.anchorMin = new Vector2(0.5f, 0.54f);
         characterRect.anchorMax = new Vector2(0.5f, 0.54f);
@@ -150,7 +159,7 @@ public sealed class WarfestLoadingScreen : MonoBehaviour
 
         // 5. Progress Text (Positioned clearly above loading bar)
         GameObject progObj = new GameObject("Progress Text", typeof(RectTransform), typeof(Text));
-        progObj.transform.SetParent(root, false);
+        progObj.transform.SetParent(frameRect, false);
         RectTransform progRect = progObj.GetComponent<RectTransform>();
         progRect.anchorMin = new Vector2(0.5f, 0.332f);
         progRect.anchorMax = new Vector2(0.5f, 0.332f);
@@ -171,7 +180,7 @@ public sealed class WarfestLoadingScreen : MonoBehaviour
 
         // Hypercasual 3D Capsule Loading Bar Track
         GameObject trackObj = new GameObject("Loading Bar Track", typeof(RectTransform), typeof(Image));
-        trackObj.transform.SetParent(root, false);
+        trackObj.transform.SetParent(frameRect, false);
         RectTransform trackRect = trackObj.GetComponent<RectTransform>();
         trackRect.anchorMin = new Vector2(0.5f, 0.285f);
         trackRect.anchorMax = new Vector2(0.5f, 0.285f);
@@ -223,7 +232,7 @@ public sealed class WarfestLoadingScreen : MonoBehaviour
 
         // 6. Tactical Tip Text
         GameObject tipObj = new GameObject("Tactical Tip", typeof(RectTransform), typeof(Text));
-        tipObj.transform.SetParent(root, false);
+        tipObj.transform.SetParent(frameRect, false);
         RectTransform tipRect = tipObj.GetComponent<RectTransform>();
         tipRect.anchorMin = new Vector2(0.5f, 0.20f);
         tipRect.anchorMax = new Vector2(0.5f, 0.20f);

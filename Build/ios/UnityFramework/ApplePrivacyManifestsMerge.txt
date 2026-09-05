@@ -1,0 +1,14 @@
+Adding elements from Unity
+	NSPrivacyAccessedAPITypes:
+		0:
+			NSPrivacyAccessedAPIType:
+				NSPrivacyAccessedAPICategoryFileTimestamp
+			NSPrivacyAccessedAPITypeReasons:
+				0:
+					0A2A.1
+				1:
+					C617.1
+
+--------------------------------------------------
+
+Adding elements from Library/PackageCache/com.unity.cloud.gltfast@0847aee0f6da/Plugins/UnityCloudGltfast.xcprivacy

@@ -212,7 +212,7 @@ public static partial class WarfestLevelCatalog
     };
 
     // The complete campaign uses deterministic, authored 3D construction rules.
-    public const int AuthoredLevelCount = 100;
+    public const int AuthoredLevelCount = 200;
 
     private static readonly string[] Titles =
     {

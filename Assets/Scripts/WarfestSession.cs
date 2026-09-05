@@ -15,7 +15,7 @@ public enum WarfestBooster
 
 public static class WarfestSession
 {
-    public const int LevelCount = 100;
+    public const int LevelCount = 200;
     public const int DefaultBalls = 20;
     public const int LevelOneBalls = 60;
     public const int MaxLives = 5;
@@ -33,7 +33,18 @@ public static class WarfestSession
     private const string CampaignCompleteKey = "Warfest.CampaignComplete";
     private const string BoosterCountKeyPrefix = "Warfest.Booster.";
     private static int selectedLevel = -1;
-    public static bool HasShownSplash { get; set; } = false;
+    private static bool s_hasShownSplash;
+    public static bool HasShownSplash
+    {
+        get => s_hasShownSplash;
+        set => s_hasShownSplash = value;
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void ResetSplashStateOnAppLaunch()
+    {
+        s_hasShownSplash = false;
+    }
 
     // Persisted player coin balance. Initialized with at least 250 coins.
     public static int Coins
@@ -251,20 +262,10 @@ public static class WarfestSession
         }
     }
 
-    // Specific level ball reductions where QA validation recorded remaining balls > 20.
-    // Each target level has its starting ball allowance reduced by 10 to 15 to ensure 100% completability.
-    private static readonly Dictionary<int, int> BallAllowanceAdjustments = new Dictionary<int, int>
-    {
-        { 12, -15 }, // Level 12 (Hollow Bunker): 43 -> 28
-        { 22, -15 }, // Level 22 (Twin Depots): 41 -> 26
-        { 43, -10 }, // Level 43 (Three-Post Trial, 60 targets): 46 -> 36
-        { 74, -10 }, // Level 74 (Four Watchtowers, 55 targets): 40 -> 30
-        { 86, -10 }, // Level 86 (High-Low Diamond, 78 targets): 51 -> 41
-        { 92, -15 }, // Level 92 (Twin Front Bastions): 51 -> 36
-        { 94, -15 }, // Level 94 (Crown Labyrinth): 46 -> 31
-        { 98, -10 }, // Level 98 (Last Barricade, 86 targets): 51 -> 41
-        { 100, -15 } // Level 100 (Grand King's Fortress): 51 -> 36
-    };
+    // Target level allowances use the standard stage-tapered campaign formula.
+    // Specific per-level adjustments can be registered here if needed.
+    private static readonly Dictionary<int, int> BallAllowanceAdjustments = new Dictionary<int, int>();
+
 
     // The authored campaign scales its block budget from 20 (level 1) to 57 (level 100). Every
     // block is a target, so the ball allowance is derived from that budget with a generous,

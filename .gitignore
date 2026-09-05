@@ -5,8 +5,9 @@
 /[Ll]ogs/
 /[Uu]serSettings/
 
-# Local build output and captures
-/[Bb]uild/
+# Local build output and captures (except committed iOS build)
+/[Bb]uild/*
+!/[Bb]uild/ios/
 /[Bb]uilds/
 /[Mm]emoryCaptures/
 /[Rr]ecordings/

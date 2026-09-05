@@ -24,6 +24,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
 
     private Font fallbackFont;
     private Texture2D panelSheet;
+    private RectTransform iphoneFrameRoot;
     private RectTransform safeAreaRoot;
     private CanvasScaler canvasScaler;
     private Vector2 appliedReferenceResolution;
@@ -118,6 +119,26 @@ public sealed class WarfestMainMenu : MonoBehaviour
 
     private void Update()
     {
+        Camera mainCamera = Camera.main;
+        Rect targetRect = WarfestDeviceViewport.GetNormalizedViewport();
+        if (mainCamera != null && mainCamera.rect != targetRect)
+        {
+            mainCamera.rect = targetRect;
+        }
+
+        if (iphoneFrameRoot != null)
+        {
+            Vector2 curMin = iphoneFrameRoot.anchorMin;
+            Vector2 curMax = iphoneFrameRoot.anchorMax;
+            if (curMin.x != targetRect.xMin || curMax.x != targetRect.xMax)
+            {
+                iphoneFrameRoot.anchorMin = new Vector2(targetRect.xMin, targetRect.yMin);
+                iphoneFrameRoot.anchorMax = new Vector2(targetRect.xMax, targetRect.yMax);
+                iphoneFrameRoot.offsetMin = Vector2.zero;
+                iphoneFrameRoot.offsetMax = Vector2.zero;
+            }
+        }
+
         ApplyCanvasScale();
         ApplySafeArea();
         if (Application.isPlaying && Time.unscaledTime >= nextLifeHudRefreshTime)
@@ -138,7 +159,8 @@ public sealed class WarfestMainMenu : MonoBehaviour
         if (mainCamera != null)
         {
             mainCamera.clearFlags = CameraClearFlags.SolidColor;
-            mainCamera.backgroundColor = new Color(0.63f, 0.78f, 0.49f, 1f);
+            mainCamera.backgroundColor = Color.black;
+            mainCamera.rect = WarfestDeviceViewport.GetNormalizedViewport();
         }
 
         // The editor preview only needs to render; input (and therefore an EventSystem) is a
@@ -170,6 +192,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
         }
 
         menuCanvas = null;
+        iphoneFrameRoot = null;
         safeAreaRoot = null;
         canvasScaler = null;
         lifeCountText = null;
@@ -248,8 +271,18 @@ public sealed class WarfestMainMenu : MonoBehaviour
         Canvas canvas = CreateCanvas(GeneratedCanvasName);
         menuCanvas = canvas;
         RectTransform root = canvas.transform as RectTransform;
-        CreateBackground(root);
-        safeAreaRoot = CreateSafeAreaRoot(root);
+
+        Rect viewport = WarfestDeviceViewport.GetNormalizedViewport();
+        GameObject frameObj = new GameObject("iPhone Frame", typeof(RectTransform));
+        frameObj.transform.SetParent(root, false);
+        iphoneFrameRoot = frameObj.GetComponent<RectTransform>();
+        iphoneFrameRoot.anchorMin = new Vector2(viewport.xMin, viewport.yMin);
+        iphoneFrameRoot.anchorMax = new Vector2(viewport.xMax, viewport.yMax);
+        iphoneFrameRoot.offsetMin = Vector2.zero;
+        iphoneFrameRoot.offsetMax = Vector2.zero;
+
+        CreateBackground(iphoneFrameRoot);
+        safeAreaRoot = CreateSafeAreaRoot(iphoneFrameRoot);
 
         WarfestLevelCatalog.LevelDefinition level = WarfestLevelCatalog.Get(WarfestSession.SelectedLevel);
         int balls = WarfestSession.GetBallAllowance(WarfestSession.SelectedLevel);
@@ -348,17 +381,32 @@ public sealed class WarfestMainMenu : MonoBehaviour
             new Vector2(0.5f, 0.535f), new Vector2(0.84f, 0.5f));
         deployButton = deploy;
 
+        deploy.interactable = true;
         if (WarfestSession.CampaignComplete)
         {
-            // Every authored level is cleared. The card stays visible for continuity but the
-            // button is inert and simply teases the next batch of missions.
-            deploy.interactable = false;
-            CreateOutlinedText(deploy.transform, "Level Number", "COMING SOON", 34, Cream,
-                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.95f, 0.5f), headingFont, DeepGreen, 2.3f);
+            // Every authored level is cleared. Keep deploy active to allow replaying level 100
+            // so players are never permanently locked out of gameplay.
+            deploy.onClick.AddListener(() =>
+            {
+                if (WarfestSession.Lives <= 0)
+                {
+                    OpenBuyLivesPanel();
+                    return;
+                }
+                StopMenuAudio();
+                WarfestLoadingScreen.ShowAndLoad(WarfestSession.LevelCount - 1);
+            });
+
+            Image difficultyChip = CreateSheetImage(deploy.transform, "Difficulty Chip", new Rect(868f, 712f, 185f, 58f),
+                new Vector2(0.5f, 0.865f), new Vector2(0.62f, 0.24f));
+            difficultyChip.color = new Color(0.56f, 0.61f, 0.5f, 1f);
+            CreateOutlinedText(deploy.transform, "Difficulty", "MASTER", 18, new Color(0.87f, 0.93f, 0.79f, 1f),
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.865f), new Vector2(0.5f, 0.16f), bodyFont, DeepGreen, 1.2f);
+            CreateOutlinedText(deploy.transform, "Level Number", "REPLAY " + WarfestSession.LevelCount, 38, Cream,
+                TextAnchor.MiddleCenter, new Vector2(0.5f, 0.4f), new Vector2(0.9f, 0.46f), headingFont, DeepGreen, 2.3f);
         }
         else
         {
-            deploy.interactable = WarfestSession.Lives > 0;
             deploy.onClick.AddListener(() =>
             {
                 if (WarfestSession.Lives <= 0)
@@ -396,10 +444,6 @@ public sealed class WarfestMainMenu : MonoBehaviour
         displayedLifeSeconds = seconds;
         lifeCountText.text = lives.ToString();
         lifeStatusText.text = lives >= WarfestSession.MaxLives ? "FULL" : WarfestSession.LifeTimerText;
-        if (deployButton != null && !WarfestSession.CampaignComplete)
-        {
-            deployButton.interactable = lives > 0;
-        }
         RefreshCoinHud();
         RefreshBuyLivesPanelState();
     }
@@ -462,6 +506,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
     {
         if (canvasScaler == null) return;
         Vector2 referenceResolution = Screen.width >= Screen.height ? new Vector2(844f, 390f) : new Vector2(390f, 844f);
+        canvasScaler.matchWidthOrHeight = 1.0f; // Lock scale strictly to height to prevent wide-screen stretching
         if (referenceResolution == appliedReferenceResolution) return;
         appliedReferenceResolution = referenceResolution;
         canvasScaler.referenceResolution = referenceResolution;
@@ -481,12 +526,11 @@ public sealed class WarfestMainMenu : MonoBehaviour
     {
         if (safeAreaRoot == null || Screen.width <= 0 || Screen.height <= 0) return;
         Rect safeArea = Screen.safeArea;
-        if (safeArea == appliedSafeArea) return;
-        appliedSafeArea = safeArea;
         safeAreaRoot.anchorMin = new Vector2(safeArea.xMin / Screen.width, safeArea.yMin / Screen.height);
         safeAreaRoot.anchorMax = new Vector2(safeArea.xMax / Screen.width, safeArea.yMax / Screen.height);
         safeAreaRoot.offsetMin = Vector2.zero;
         safeAreaRoot.offsetMax = Vector2.zero;
+        appliedSafeArea = safeArea;
     }
 
     private RectTransform CreateContainer(Transform parent, string name, Vector2 center, Vector2 size)

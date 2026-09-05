@@ -20,8 +20,9 @@ public sealed class WarfestGameController : MonoBehaviour
     private readonly List<WarfestTarget> blockTargets = new List<WarfestTarget>();
     public List<WarfestTarget> BlockTargets => blockTargets;
     private readonly Collider2D[] targetOverlapResults = new Collider2D[16];
-    private readonly Collider2D[] blastOverlapResults = new Collider2D[64];
-    private readonly HashSet<Rigidbody2D> pushedBodies = new HashSet<Rigidbody2D>();
+    private Coroutine failureRoutine;
+    private PointerEventData uiPointerData;
+    private readonly List<RaycastResult> uiRaycastResults = new List<RaycastResult>();
     [SerializeField] private Font headingFont;
     [SerializeField] private Font bodyFont;
     private Font font;
@@ -202,6 +203,7 @@ public sealed class WarfestGameController : MonoBehaviour
         if (bodyFont == null) bodyFont = font;
         soundEnabled = WarfestAudio.SoundEnabled;
         musicEnabled = WarfestAudio.MusicEnabled;
+        WarfestSession.HasShownSplash = true;
         LoadOriginalSprites();
         EnsureEventSystem();
         EnsureCamera();
@@ -467,6 +469,11 @@ private static float GetModelMass(int variant)
 
         ApplyCanvasScale();
         ApplySafeArea();
+        if (gameplayCamera != null)
+        {
+            Rect targetRect = WarfestDeviceViewport.GetNormalizedViewport();
+            if (gameplayCamera.rect != targetRect) gameplayCamera.rect = targetRect;
+        }
         UpdateRecoil();
         UpdateInfiniteBallsTimer();
         if (failureLifeStatus != null && Time.unscaledTime >= nextLifeStatusRefreshTime)
@@ -484,7 +491,7 @@ private static float GetModelMass(int variant)
 
         // A shot must begin with a new press inside this gameplay scene. This prevents the
         // release of the menu-selection click/tap from becoming an unintended first shot.
-        if (!TryGetPointer(out Vector2 position, out bool held, out bool pressedThisFrame))
+        if (!TryGetPointer(out Vector2 position, out bool held, out bool pressedThisFrame, out int pointerId))
         {
             CancelAim();
             return;
@@ -492,13 +499,17 @@ private static float GetModelMass(int variant)
 
         if (pressedThisFrame)
         {
-            isAiming = true;
-            hasAimPoint = false;
-            gestureBlocked = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+            gestureBlocked = IsPointerOverUI(pointerId, position);
             if (!gestureBlocked)
             {
+                isAiming = true;
+                hasAimPoint = false;
                 AimAt(position);
                 UpdateAimLine();
+            }
+            else
+            {
+                CancelAim();
             }
             return;
         }
@@ -507,8 +518,15 @@ private static float GetModelMass(int variant)
         {
             if (isAiming && !gestureBlocked)
             {
-                AimAt(position);
-                UpdateAimLine();
+                if (IsPointerOverUI(pointerId, position))
+                {
+                    CancelAim();
+                }
+                else
+                {
+                    AimAt(position);
+                    UpdateAimLine();
+                }
             }
             return;
         }
@@ -516,7 +534,7 @@ private static float GetModelMass(int variant)
         // Only a press that armed aiming above may fire on release.
         if (isAiming)
         {
-            bool shouldFire = !gestureBlocked && hasAimPoint;
+            bool shouldFire = !gestureBlocked && hasAimPoint && !IsPointerOverUI(pointerId, position);
             isAiming = false;
             gestureBlocked = false;
             HideAimLine();
@@ -649,7 +667,8 @@ private void EnsureCamera()
         gameplayCamera.orthographic = true;
         gameplayCamera.orthographicSize = 6.35f;
         gameplayCamera.clearFlags = CameraClearFlags.SolidColor;
-        gameplayCamera.backgroundColor = LightBackground;
+        gameplayCamera.backgroundColor = Color.black;
+        gameplayCamera.rect = WarfestDeviceViewport.GetNormalizedViewport();
     }
 
     private void ClearExistingWorld()
@@ -657,6 +676,11 @@ private void EnsureCamera()
         explosionPool.Clear();
         nextExplosionPoolIndex = 0;
         tableColliders.Clear();
+        blocks.Clear();
+        blockBodies.Clear();
+        blockColliders.Clear();
+        blockTargets.Clear();
+        blockDepthLayers.Clear();
         UnityEngine.SceneManagement.Scene activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
         if (!activeScene.isLoaded) return;
         GameObject[] roots = activeScene.GetRootGameObjects();
@@ -1147,7 +1171,21 @@ private void CreateCannonBase()
         return cannonBaseSprite;
     }
 
-private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool pressedThisFrame)
+    private bool IsPointerOverUI(int pointerId, Vector2 screenPosition)
+    {
+        if (EventSystem.current == null) return false;
+        if (EventSystem.current.IsPointerOverGameObject()) return true;
+        if (pointerId >= 0 && EventSystem.current.IsPointerOverGameObject(pointerId)) return true;
+        if (EventSystem.current.IsPointerOverGameObject(0)) return true;
+
+        if (uiPointerData == null) uiPointerData = new PointerEventData(EventSystem.current);
+        uiPointerData.position = screenPosition;
+        uiRaycastResults.Clear();
+        EventSystem.current.RaycastAll(uiPointerData, uiRaycastResults);
+        return uiRaycastResults.Count > 0;
+    }
+
+    private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool pressedThisFrame, out int pointerId)
     {
         Touchscreen touchscreen = Touchscreen.current;
         if (touchscreen != null)
@@ -1162,8 +1200,16 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
             if (touchActive)
             {
                 screenPosition = primaryTouch.position.ReadValue();
+                if (!WarfestDeviceViewport.IsPointerInViewport(screenPosition))
+                {
+                    held = false;
+                    pressedThisFrame = false;
+                    pointerId = -1;
+                    return false;
+                }
                 held = primaryTouch.press.isPressed;
                 pressedThisFrame = primaryTouch.press.wasPressedThisFrame;
+                pointerId = primaryTouch.touchId.ReadValue();
                 return true;
             }
         }
@@ -1175,12 +1221,21 @@ private bool TryGetPointer(out Vector2 screenPosition, out bool held, out bool p
             screenPosition = default;
             held = false;
             pressedThisFrame = false;
+            pointerId = -1;
             return false;
         }
 
         screenPosition = pointer.position.ReadValue();
+        if (!WarfestDeviceViewport.IsPointerInViewport(screenPosition))
+        {
+            held = false;
+            pressedThisFrame = false;
+            pointerId = -1;
+            return false;
+        }
         held = mouse.leftButton.isPressed;
         pressedThisFrame = mouse.leftButton.wasPressedThisFrame;
+        pointerId = -1;
         return true;
     }
 
@@ -1273,9 +1328,9 @@ private void Fire()
             RefreshSpreadPreview();
         }
 
-        if (!infiniteBallsActive && remainingBalls <= 0 && targetsRemaining > 0)
+        if (!infiniteBallsActive && remainingBalls <= 0 && targetsRemaining > 0 && !levelEnded)
         {
-            StartCoroutine(ShowFailureAfterDelay());
+            TriggerFailureCheck();
         }
     }
 
@@ -1489,6 +1544,16 @@ private void Fire()
         return s_skullBallMaterial;
     }
 
+    private void TriggerFailureCheck()
+    {
+        if (infiniteBallsActive || remainingBalls > 0 || levelEnded) return;
+        if (failureRoutine != null)
+        {
+            StopCoroutine(failureRoutine);
+        }
+        failureRoutine = StartCoroutine(ShowFailureAfterDelay());
+    }
+
     private IEnumerator ShowFailureAfterDelay()
     {
         // The final shot may still be travelling, and the structure it strikes may still be
@@ -1500,11 +1565,23 @@ private void Fire()
         float guard = 0f;
         while (!levelEnded && targetsRemaining > 0 && !WorldHasSettled() && guard < 6f)
         {
+            if (infiniteBallsActive || remainingBalls > 0)
+            {
+                failureRoutine = null;
+                yield break;
+            }
             guard += 0.15f;
             yield return new WaitForSeconds(0.15f);
         }
 
+        if (infiniteBallsActive || remainingBalls > 0)
+        {
+            failureRoutine = null;
+            yield break;
+        }
+
         if (!levelEnded && targetsRemaining > 0) ShowFailure();
+        failureRoutine = null;
     }
 
     // True once no shot is still in flight and every remaining block has effectively stopped
@@ -1563,6 +1640,11 @@ public void RegisterTargetBroken(WarfestTarget target)
         if (targetsRemaining == 0)
         {
             levelEnded = true;
+            if (failureRoutine != null)
+            {
+                StopCoroutine(failureRoutine);
+                failureRoutine = null;
+            }
             StartCoroutine(CompleteLevelAfterDelay());
         }
     }
@@ -1590,13 +1672,15 @@ public void RegisterTargetBroken(WarfestTarget target)
 
     // Shared radial blast used by both bombs and the missile booster: breaks unbroken targets in
     // range and shoves every rigidbody outward with distance falloff.
+    // Uses a local hit buffer and local pushed set to prevent array corruption during recursive bomb chain reactions.
     private void ApplyBlast(Vector2 center, float blastRadius, WarfestTarget source)
     {
-        int hitCount = Physics2D.OverlapCircle(center, blastRadius, ContactFilter2D.noFilter, blastOverlapResults);
-        pushedBodies.Clear();
+        Collider2D[] localHits = new Collider2D[64];
+        HashSet<Rigidbody2D> localPushedBodies = new HashSet<Rigidbody2D>();
+        int hitCount = Physics2D.OverlapCircle(center, blastRadius, ContactFilter2D.noFilter, localHits);
         for (int i = 0; i < hitCount; i++)
         {
-            Collider2D hit = blastOverlapResults[i];
+            Collider2D hit = localHits[i];
             if (hit == null) continue;
             WarfestTarget target = hit.GetComponent<WarfestTarget>();
             if (target != null && target != source && !target.IsBroken)
@@ -1609,7 +1693,7 @@ public void RegisterTargetBroken(WarfestTarget target)
             }
 
             Rigidbody2D body = hit.attachedRigidbody;
-            if (body == null || !pushedBodies.Add(body)) continue;
+            if (body == null || !localPushedBodies.Add(body)) continue;
             Vector2 offset = body.worldCenterOfMass - center;
             float distance = Mathf.Max(0.12f, offset.magnitude);
             float falloff = 1f - Mathf.Clamp01(distance / blastRadius);
@@ -2248,10 +2332,11 @@ private void RefreshBoosterHud()
             WarfestBooster booster = (WarfestBooster)i;
             int count = WarfestSession.GetBoosterCount(booster);
             bool owned = count > 0;
+            bool isThisBoosterArmed = hasArmedBooster && armedBooster == booster;
 
             if (boosterButtons[i] != null)
             {
-                boosterButtons[i].interactable = owned && !selectionLocked;
+                boosterButtons[i].interactable = (owned && !selectionLocked) || isThisBoosterArmed;
             }
             if (boosterButtonImages[i] != null)
             {
@@ -2277,11 +2362,28 @@ private void RefreshBoosterHud()
 private void OnBoosterClicked(WarfestBooster booster)
     {
         if (levelEnded || settingsOpen) return;
+        CancelAim();
+
+        // Tapping the currently armed booster cancels/unarms it and returns it to inventory
+        if (hasArmedBooster && armedBooster == booster)
+        {
+            hasArmedBooster = false;
+            WarfestSession.GrantBooster(booster, 1);
+            if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(null);
+            RefreshBoosterHud();
+            return;
+        }
+
         if (hasArmedBooster || infiniteBallsActive) return;
         if (!WarfestSession.ConsumeBooster(booster)) return;
 
         if (booster == WarfestBooster.InfiniteBalls)
         {
+            if (failureRoutine != null)
+            {
+                StopCoroutine(failureRoutine);
+                failureRoutine = null;
+            }
             infiniteBallsActive = true;
             infiniteBallsWaitingForFirstShot = true;
             infiniteBallsTimeRemaining = InfiniteBallsDurationSeconds;
@@ -2326,7 +2428,7 @@ private void UpdateInfiniteBallsTimer()
 
         if (remainingBalls <= 0 && targetsRemaining > 0 && !levelEnded)
         {
-            StartCoroutine(ShowFailureAfterDelay());
+            TriggerFailureCheck();
         }
     }
 
@@ -2412,6 +2514,7 @@ private Canvas CreateCanvas(string name)
         Vector2 referenceResolution = Screen.width >= Screen.height
             ? new Vector2(844f, 390f)
             : new Vector2(390f, 844f);
+        hudScaler.matchWidthOrHeight = 1.0f; // Lock scale strictly to height to prevent wide-screen stretching
         if (referenceResolution == appliedReferenceResolution) return;
 
         appliedReferenceResolution = referenceResolution;
@@ -2432,13 +2535,18 @@ private Canvas CreateCanvas(string name)
     {
         if (safeAreaRoot == null || Screen.width <= 0 || Screen.height <= 0) return;
         Rect safeArea = Screen.safeArea;
-        if (safeArea == appliedSafeArea) return;
+        Rect viewport = WarfestDeviceViewport.GetNormalizedViewport();
 
-        appliedSafeArea = safeArea;
-        safeAreaRoot.anchorMin = new Vector2(safeArea.xMin / Screen.width, safeArea.yMin / Screen.height);
-        safeAreaRoot.anchorMax = new Vector2(safeArea.xMax / Screen.width, safeArea.yMax / Screen.height);
+        float xMinNorm = viewport.xMin + (safeArea.xMin / Screen.width) * viewport.width;
+        float xMaxNorm = viewport.xMin + (safeArea.xMax / Screen.width) * viewport.width;
+        float yMinNorm = viewport.yMin + (safeArea.yMin / Screen.height) * viewport.height;
+        float yMaxNorm = viewport.yMin + (safeArea.yMax / Screen.height) * viewport.height;
+
+        safeAreaRoot.anchorMin = new Vector2(xMinNorm, yMinNorm);
+        safeAreaRoot.anchorMax = new Vector2(xMaxNorm, yMaxNorm);
         safeAreaRoot.offsetMin = Vector2.zero;
         safeAreaRoot.offsetMax = Vector2.zero;
+        appliedSafeArea = safeArea;
     }
 
     private GameObject CreateSprite(string name, Sprite sprite, Vector3 position, Vector2 scale, int sortingOrder)
