@@ -82,7 +82,16 @@ public sealed class WarfestBall : MonoBehaviour
             return;
         }
 
-        if (intendedTarget == null) return;
+        if (intendedTarget == null)
+        {
+            Rigidbody2D rb = GetComponent<Rigidbody2D>();
+            if (rb != null && rb.bodyType == RigidbodyType2D.Dynamic)
+            {
+                float speed = Mathf.Max(forwardSpeed, rb.linearVelocity.magnitude);
+                rb.linearVelocity = launchDirection * speed;
+            }
+            return;
+        }
         if (intendedTarget.IsBroken)
         {
             intendedTarget = null;

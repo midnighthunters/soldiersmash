@@ -139,6 +139,9 @@ public sealed class WarfestGameController : MonoBehaviour
     private bool isAiming;
     private bool gestureBlocked;
     private LineRenderer aimLine;
+    private LineRenderer aimLineLeft;
+    private LineRenderer aimLineRight;
+    private GameObject spreadPreviewBallsRoot;
     private bool hasAimPoint;
     private Vector2 aimWorldPosition;
     private bool modelPhysicsReleased;
@@ -530,6 +533,7 @@ private static float GetModelMass(int variant)
 
     // Draws the aim preview from the muzzle to the targeted block. If the player is aiming at or
     // towards a block, the aim line connects directly to that exact target block.
+    // When the 3-ball spread booster is armed, three separate trajectories fan out.
     private void UpdateAimLine()
     {
         if (aimLine == null || muzzle == null) return;
@@ -538,11 +542,41 @@ private static float GetModelMass(int variant)
         Vector2 dir = aimWorldPosition - origin;
         if (dir.sqrMagnitude < 0.0001f)
         {
-            aimLine.enabled = false;
+            HideAimLine();
             return;
         }
 
-        WarfestTarget target = FindIntendedTarget(aimWorldPosition, origin, dir);
+        bool isSpread = hasArmedBooster && armedBooster == WarfestBooster.SpreadShot;
+        float baseAngle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+        Vector2 perp = new Vector2(-dir.normalized.y, dir.normalized.x);
+
+        UpdateLineSegment(aimLine, origin, dir.normalized, aimWorldPosition);
+
+        if (isSpread && aimLineLeft != null && aimLineRight != null)
+        {
+            float leftRad = (baseAngle - 16f) * Mathf.Deg2Rad;
+            Vector2 leftDir = new Vector2(Mathf.Cos(leftRad), Mathf.Sin(leftRad));
+            Vector2 leftOrigin = origin - perp * 0.22f;
+            UpdateLineSegment(aimLineLeft, leftOrigin, leftDir, null);
+
+            float rightRad = (baseAngle + 16f) * Mathf.Deg2Rad;
+            Vector2 rightDir = new Vector2(Mathf.Cos(rightRad), Mathf.Sin(rightRad));
+            Vector2 rightOrigin = origin + perp * 0.22f;
+            UpdateLineSegment(aimLineRight, rightOrigin, rightDir, null);
+        }
+        else
+        {
+            if (aimLineLeft != null) aimLineLeft.enabled = false;
+            if (aimLineRight != null) aimLineRight.enabled = false;
+        }
+    }
+
+    private void UpdateLineSegment(LineRenderer line, Vector2 origin, Vector2 dir, Vector2? targetPoint)
+    {
+        WarfestTarget target = targetPoint.HasValue
+            ? FindIntendedTarget(targetPoint.Value, origin, dir)
+            : FindIntendedTarget(origin + dir * 8f, origin, dir);
+
         Vector2 end;
         if (target != null && target.Collider != null)
         {
@@ -551,18 +585,20 @@ private static float GetModelMass(int variant)
         else
         {
             const float maxLength = 14f;
-            RaycastHit2D hit = Physics2D.Raycast(origin, dir.normalized, maxLength, aimCollisionMask);
-            end = hit.collider != null ? hit.point : origin + dir.normalized * maxLength;
+            RaycastHit2D hit = Physics2D.Raycast(origin, dir, maxLength, aimCollisionMask);
+            end = hit.collider != null ? hit.point : origin + dir * maxLength;
         }
 
-        aimLine.enabled = true;
-        aimLine.SetPosition(0, new Vector3(origin.x, origin.y, -0.3f));
-        aimLine.SetPosition(1, new Vector3(end.x, end.y, -0.3f));
+        line.enabled = true;
+        line.SetPosition(0, new Vector3(origin.x, origin.y, -0.3f));
+        line.SetPosition(1, new Vector3(end.x, end.y, -0.3f));
     }
 
     private void HideAimLine()
     {
         if (aimLine != null) aimLine.enabled = false;
+        if (aimLineLeft != null) aimLineLeft.enabled = false;
+        if (aimLineRight != null) aimLineRight.enabled = false;
     }
 
     private void EnsureEventSystem()
@@ -941,20 +977,28 @@ private void CreatePistol()
         muzzle.SetParent(pistolPivot, false);
         muzzle.localPosition = new Vector3(0f, 1.45f, 0f);
 
+        CreateSpreadPreviewBalls();
         CreateAimLine();
     }
 
     private void CreateAimLine()
     {
-        GameObject aimLineObject = new GameObject("Aim Line", typeof(LineRenderer));
+        aimLine = CreateSingleAimLine("Aim Line");
+        aimLineLeft = CreateSingleAimLine("Aim Line Left");
+        aimLineRight = CreateSingleAimLine("Aim Line Right");
+    }
+
+    private LineRenderer CreateSingleAimLine(string name)
+    {
+        GameObject aimLineObject = new GameObject(name, typeof(LineRenderer));
         aimLineObject.transform.SetParent(worldRoot, false);
-        aimLine = aimLineObject.GetComponent<LineRenderer>();
-        aimLine.useWorldSpace = true;
-        aimLine.positionCount = 2;
-        aimLine.numCapVertices = 4;
-        aimLine.alignment = LineAlignment.View;
-        aimLine.startWidth = 0.10f;
-        aimLine.endWidth = 0.10f;
+        LineRenderer line = aimLineObject.GetComponent<LineRenderer>();
+        line.useWorldSpace = true;
+        line.positionCount = 2;
+        line.numCapVertices = 4;
+        line.alignment = LineAlignment.View;
+        line.startWidth = 0.10f;
+        line.endWidth = 0.10f;
 
         if (s_aimLineMaterial == null)
         {
@@ -962,12 +1006,97 @@ private void CreatePistol()
             if (lineShader == null) lineShader = Shader.Find("Universal Render Pipeline/Unlit");
             if (lineShader != null) s_aimLineMaterial = new Material(lineShader) { name = "Warfest Aim Line" };
         }
-        if (s_aimLineMaterial != null) aimLine.sharedMaterial = s_aimLineMaterial;
+        if (s_aimLineMaterial != null) line.sharedMaterial = s_aimLineMaterial;
 
-        aimLine.startColor = new Color(1f, 0.95f, 0.35f, 0.90f);
-        aimLine.endColor = new Color(1f, 0.95f, 0.35f, 0.10f);
-        aimLine.sortingOrder = 7;
-        aimLine.enabled = false;
+        line.startColor = new Color(1f, 0.95f, 0.35f, 0.90f);
+        line.endColor = new Color(1f, 0.95f, 0.35f, 0.10f);
+        line.sortingOrder = 7;
+        line.enabled = false;
+        return line;
+    }
+
+    // Creates the 3 preview balls resting on the cannon muzzle when the 3-ball booster is armed.
+    private void CreateSpreadPreviewBalls()
+    {
+        if (muzzle == null) return;
+        spreadPreviewBallsRoot = new GameObject("Spread Preview Balls");
+        spreadPreviewBallsRoot.transform.SetParent(muzzle, false);
+        spreadPreviewBallsRoot.transform.localPosition = Vector3.zero;
+        spreadPreviewBallsRoot.transform.localRotation = Quaternion.identity;
+        spreadPreviewBallsRoot.transform.localScale = new Vector3(1f / 1.7f, 1f / 1.7f, 1f);
+
+        float spacing = 0.22f;
+        Vector3[] localPositions = {
+            new Vector3(-spacing, -0.04f, -0.1f),
+            new Vector3(0f, 0f, -0.1f),
+            new Vector3(spacing, -0.04f, -0.1f)
+        };
+
+        for (int i = 0; i < 3; i++)
+        {
+            GameObject previewBall = new GameObject($"Preview Ball {i}");
+            previewBall.transform.SetParent(spreadPreviewBallsRoot.transform, false);
+            previewBall.transform.localPosition = localPositions[i];
+
+            if (ballModelPrefab != null)
+            {
+                GameObject visual = Instantiate(ballModelPrefab, previewBall.transform);
+                visual.name = "Visual";
+                visual.transform.localPosition = Vector3.zero;
+                visual.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+                ApplyModelMaterial(visual, ballModelMaterial);
+                ConfigureBallVisual(visual, ShotRadius);
+            }
+            else
+            {
+                GameObject fallback = new GameObject("Visual", typeof(SpriteRenderer));
+                fallback.transform.SetParent(previewBall.transform, false);
+                fallback.transform.localScale = Vector3.one * (ShotRadius * 2f);
+                SpriteRenderer sr = fallback.GetComponent<SpriteRenderer>();
+                sr.sprite = GetCannonBaseSprite();
+                sr.color = new Color(1f, 0.82f, 0.22f, 1f);
+                sr.sortingOrder = 6;
+            }
+        }
+
+        spreadPreviewBallsRoot.SetActive(false);
+    }
+
+    private void RefreshSpreadPreview()
+    {
+        if (spreadPreviewBallsRoot != null)
+        {
+            bool show = hasArmedBooster && armedBooster == WarfestBooster.SpreadShot && !levelEnded;
+            spreadPreviewBallsRoot.SetActive(show);
+        }
+    }
+
+    private void ConfigureBallVisual(GameObject visual, float radius)
+    {
+        if (visual == null) return;
+        if (!s_ballVisualConfigured)
+        {
+            Bounds sourceBounds = GetModelBounds(visual);
+            float diameter = radius * 2f;
+            float maxDim = Mathf.Max(sourceBounds.size.x, sourceBounds.size.y);
+            float visualScale = maxDim > 0.0001f ? diameter / maxDim : 1f;
+            visual.transform.localScale *= visualScale;
+            Bounds fittedBounds = GetModelBounds(visual);
+            Transform parent = visual.transform.parent;
+            Vector3 centerInBall = parent != null
+                ? parent.InverseTransformPoint(fittedBounds.center)
+                : fittedBounds.center;
+            visual.transform.localPosition -= centerInBall;
+
+            s_ballVisualScaleUnit = visual.transform.localScale / radius;
+            s_ballVisualCenterOffsetUnit = centerInBall / radius;
+            s_ballVisualConfigured = true;
+        }
+        else
+        {
+            visual.transform.localScale = s_ballVisualScaleUnit * radius;
+            visual.transform.localPosition = -s_ballVisualCenterOffsetUnit * radius;
+        }
     }
 
 private void CreateCannonBase()
@@ -1088,6 +1217,12 @@ private void Fire()
             remainingBalls--;
         }
 
+        HideAimLine();
+        if (spreadPreviewBallsRoot != null)
+        {
+            spreadPreviewBallsRoot.SetActive(false);
+        }
+
         bool boosted = hasArmedBooster;
         WarfestBooster booster = armedBooster;
 
@@ -1115,7 +1250,7 @@ private void Fire()
 
         if (boosted && booster == WarfestBooster.SpreadShot)
         {
-            FireSpread(launchPosition, launchDirection);
+            FireSpread(launchPosition, launchDirection, intendedTarget);
         }
         else if (boosted && booster == WarfestBooster.SkullShot)
         {
@@ -1135,6 +1270,7 @@ private void Fire()
         {
             hasArmedBooster = false;
             RefreshBoosterHud();
+            RefreshSpreadPreview();
         }
 
         if (!infiniteBallsActive && remainingBalls <= 0 && targetsRemaining > 0)
@@ -1143,17 +1279,32 @@ private void Fire()
         }
     }
 
-    // Spread booster: three balls launched in a fan around the aim direction. The whole fan counts
-    // as the single shot already spent by Fire().
-    private void FireSpread(Vector2 launchPosition, Vector2 launchDirection)
+    // Spread booster: three balls launched in a fan around the aim direction with distinct
+    // spacing across the cannon muzzle.
+    private void FireSpread(Vector2 launchPosition, Vector2 launchDirection, WarfestTarget centerTarget = null)
     {
         float baseAngle = Mathf.Atan2(launchDirection.y, launchDirection.x) * Mathf.Rad2Deg;
-        float[] offsets = { -13f, 0f, 13f };
-        for (int i = 0; i < offsets.Length; i++)
+        Vector2 perp = new Vector2(-launchDirection.y, launchDirection.x).normalized;
+        float[] angleOffsets = { -16f, 0f, 16f };
+        float[] posOffsets = { -0.22f, 0f, 0.22f };
+
+        for (int i = 0; i < 3; i++)
         {
-            float radians = (baseAngle + offsets[i]) * Mathf.Deg2Rad;
+            float radians = (baseAngle + angleOffsets[i]) * Mathf.Deg2Rad;
             Vector2 direction = new Vector2(Mathf.Cos(radians), Mathf.Sin(radians));
-            CreateBall(launchPosition, direction, null);
+            Vector2 spawnPos = launchPosition + perp * posOffsets[i];
+
+            WarfestTarget targetForBall = null;
+            if (i == 1)
+            {
+                targetForBall = centerTarget;
+            }
+            else
+            {
+                targetForBall = FindIntendedTarget(spawnPos + direction * 8f, spawnPos, direction);
+            }
+
+            CreateBall(spawnPos, direction, targetForBall);
         }
     }
 
@@ -1264,25 +1415,7 @@ private void Fire()
             visual.transform.localPosition = Vector3.zero;
             visual.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
             ApplyModelMaterial(visual, piercing ? GetSkullBallMaterial() : ballModelMaterial);
-            if (!s_ballVisualConfigured)
-            {
-                Bounds sourceBounds = GetModelBounds(visual);
-                float diameter = radius * 2f;
-                float visualScale = diameter / Mathf.Max(sourceBounds.size.x, sourceBounds.size.y);
-                visual.transform.localScale *= visualScale;
-                Bounds fittedBounds = GetModelBounds(visual);
-                Vector3 centerInBall = ball.transform.InverseTransformPoint(fittedBounds.center);
-                visual.transform.localPosition -= centerInBall;
-
-                s_ballVisualScaleUnit = visual.transform.localScale / radius;
-                s_ballVisualCenterOffsetUnit = centerInBall / radius;
-                s_ballVisualConfigured = true;
-            }
-            else
-            {
-                visual.transform.localScale = s_ballVisualScaleUnit * radius;
-                visual.transform.localPosition = -s_ballVisualCenterOffsetUnit * radius;
-            }
+            ConfigureBallVisual(visual, radius);
         }
         else
         {
@@ -2136,6 +2269,7 @@ private void RefreshBoosterHud()
         }
 
         RefreshBoosterStatus();
+        RefreshSpreadPreview();
     }
 
     // Handles a tap on a booster: infinite balls applies immediately, the shot boosters arm the
