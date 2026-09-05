@@ -527,9 +527,8 @@ private static float GetModelMass(int variant)
         HideAimLine();
     }
 
-    // Draws the aim preview from the muzzle to the first block the shot would actually strike.
-    // The ball ignores the table layer, so the raycast does too - the line ends exactly where
-    // the projectile will land, making "aim where you shoot" unambiguous.
+    // Draws the aim preview from the muzzle to the targeted block. If the player is aiming at or
+    // towards a block, the aim line connects directly to that exact target block.
     private void UpdateAimLine()
     {
         if (aimLine == null || muzzle == null) return;
@@ -541,11 +540,19 @@ private static float GetModelMass(int variant)
             aimLine.enabled = false;
             return;
         }
-        dir.Normalize();
 
-        const float maxLength = 14f;
-        RaycastHit2D hit = Physics2D.Raycast(origin, dir, maxLength, aimCollisionMask);
-        Vector2 end = hit.collider != null ? hit.point : origin + dir * maxLength;
+        WarfestTarget target = FindIntendedTarget(aimWorldPosition, origin, dir);
+        Vector2 end;
+        if (target != null && target.Collider != null)
+        {
+            end = target.Collider.bounds.center;
+        }
+        else
+        {
+            const float maxLength = 14f;
+            RaycastHit2D hit = Physics2D.Raycast(origin, dir.normalized, maxLength, aimCollisionMask);
+            end = hit.collider != null ? hit.point : origin + dir.normalized * maxLength;
+        }
 
         aimLine.enabled = true;
         aimLine.SetPosition(0, new Vector3(origin.x, origin.y, -0.3f));
@@ -1076,12 +1083,23 @@ private void Fire()
         PlayShootSound();
         RefreshHud();
         Vector2 launchPosition = muzzle.position;
-        Vector2 launchDirection = hasAimPoint ? aimWorldPosition - launchPosition : (Vector2)muzzle.up;
+        Vector2 rawDirection = hasAimPoint ? aimWorldPosition - launchPosition : (Vector2)muzzle.up;
+        WarfestTarget intendedTarget = hasAimPoint ? FindIntendedTarget(aimWorldPosition, launchPosition, rawDirection) : null;
 
-        // Precision aiming: if the player tapped directly on a block, the shot is committed to that
-        // exact block so it lands where they aimed instead of stopping at whatever crate happens to
-        // sit lower in the trajectory.
-        WarfestTarget intendedTarget = hasAimPoint ? FindTargetAt(aimWorldPosition) : null;
+        Vector2 launchDirection = rawDirection;
+        if (intendedTarget != null)
+        {
+            Vector2 targetCenter = intendedTarget.Collider != null
+                ? (Vector2)intendedTarget.Collider.bounds.center
+                : (Vector2)intendedTarget.transform.position;
+            Vector2 toTarget = targetCenter - launchPosition;
+            if (toTarget.sqrMagnitude > 0.0001f)
+            {
+                launchDirection = toTarget.normalized;
+                float angle = Mathf.Atan2(launchDirection.y, launchDirection.x) * Mathf.Rad2Deg;
+                pistolPivot.rotation = Quaternion.Euler(0f, 0f, angle - 90f);
+            }
+        }
 
         if (boosted && booster == WarfestBooster.SpreadShot)
         {
@@ -1127,11 +1145,19 @@ private void Fire()
         }
     }
 
-    // Returns the front-most unbroken target whose collider contains the tapped world point, so a
-    // shot resolves against the exact block the player aimed at (front plane wins ties on depth).
     private WarfestTarget FindTargetAt(Vector2 point)
     {
-        int overlapCount = Physics2D.OverlapPoint(point, ContactFilter2D.noFilter, targetOverlapResults);
+        Vector2 origin = muzzle != null ? (Vector2)muzzle.position : Vector2.zero;
+        Vector2 dir = point - origin;
+        return FindIntendedTarget(point, origin, dir);
+    }
+
+    // Returns the exact unbroken target the player is aiming at. Checks direct tap, circle radius
+    // around tap (to tolerate clicking on 3D visual or collider edges), and raycast along aim line.
+    private WarfestTarget FindIntendedTarget(Vector2 aimPoint, Vector2 launchOrigin, Vector2 aimDir)
+    {
+        // 1. Direct point overlap
+        int overlapCount = Physics2D.OverlapPoint(aimPoint, ContactFilter2D.noFilter, targetOverlapResults);
         WarfestTarget best = null;
         float bestZ = float.MaxValue;
         for (int i = 0; i < overlapCount; i++)
@@ -1146,6 +1172,59 @@ private void Fire()
                 best = target;
             }
         }
+        if (best != null) return best;
+
+        // 2. Circle overlap around aim point (handles clicking anywhere on 3D visual or slight edge misses)
+        overlapCount = Physics2D.OverlapCircle(aimPoint, 0.45f, ContactFilter2D.noFilter, targetOverlapResults);
+        float bestDistSqr = float.MaxValue;
+        for (int i = 0; i < overlapCount; i++)
+        {
+            Collider2D overlap = targetOverlapResults[i];
+            WarfestTarget target = overlap != null ? overlap.GetComponent<WarfestTarget>() : null;
+            if (target == null || target.IsBroken) continue;
+            float distSqr = ((Vector2)overlap.bounds.center - aimPoint).sqrMagnitude;
+            if (distSqr < bestDistSqr)
+            {
+                bestDistSqr = distSqr;
+                best = target;
+            }
+        }
+        if (best != null) return best;
+
+        // 3. Raycast along aim direction from muzzle (handles dragging the aim line towards a block)
+        if (aimDir.sqrMagnitude > 0.0001f)
+        {
+            Vector2 dirNorm = aimDir.normalized;
+            RaycastHit2D[] hits = Physics2D.RaycastAll(launchOrigin, dirNorm, 25f, aimCollisionMask);
+            float closestHitDist = float.MaxValue;
+            for (int i = 0; i < hits.Length; i++)
+            {
+                if (hits[i].collider == null) continue;
+                WarfestTarget target = hits[i].collider.GetComponent<WarfestTarget>();
+                if (target == null || target.IsBroken) continue;
+                if (hits[i].distance < closestHitDist)
+                {
+                    closestHitDist = hits[i].distance;
+                    best = target;
+                }
+            }
+            if (best != null) return best;
+
+            // 4. CircleCast along aim trajectory (in case ray narrowly skimmed between colliders)
+            RaycastHit2D[] circleHits = Physics2D.CircleCastAll(launchOrigin, ShotRadius * 0.8f, dirNorm, 25f, aimCollisionMask);
+            for (int i = 0; i < circleHits.Length; i++)
+            {
+                if (circleHits[i].collider == null) continue;
+                WarfestTarget target = circleHits[i].collider.GetComponent<WarfestTarget>();
+                if (target == null || target.IsBroken) continue;
+                if (circleHits[i].distance < closestHitDist)
+                {
+                    closestHitDist = circleHits[i].distance;
+                    best = target;
+                }
+            }
+        }
+
         return best;
     }
 
@@ -1204,16 +1283,15 @@ private void Fire()
         CircleCollider2D collider = ball.GetComponent<CircleCollider2D>();
         collider.radius = radius;
 
-        // When the shot is committed to a specific tapped block, only ignore blocks that sit in front
-        // of it on depth so the projectile reaches the intended target without wasting collision pair updates.
+        // When the shot is committed to a specific block, ignore all other blocks so the projectile
+        // exclusively targets and hits that exact block without being intercepted or deflected by others.
         if (intendedTarget != null && !piercing)
         {
             Collider2D targetCollider = intendedTarget.Collider;
-            float targetZ = intendedTarget.transform.position.z;
             for (int i = 0; i < blockColliders.Count; i++)
             {
                 Collider2D blockCollider = blockColliders[i];
-                if (blockCollider != null && blockCollider != targetCollider && blockCollider.transform.position.z < targetZ - 0.02f)
+                if (blockCollider != null && blockCollider != targetCollider)
                 {
                     Physics2D.IgnoreCollision(collider, blockCollider, true);
                 }
@@ -1230,7 +1308,7 @@ private void Fire()
         body.angularVelocity = -direction.normalized.x * 540f;
         float impact = (5.8f + level.difficulty * 0.5f) * (piercing ? 1.8f : 1f);
         activeBalls++;
-        ball.GetComponent<WarfestBall>().Initialize(direction, impact, ShotLifetime, mode, this);
+        ball.GetComponent<WarfestBall>().Initialize(direction, impact, ShotLifetime, mode, this, intendedTarget);
     }
 
     // Lazily-built dark material for the skull wrecking ball so it reads distinct from the standard

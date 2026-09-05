@@ -26,14 +26,51 @@ public sealed class WarfestBall : MonoBehaviour
         ownCollider = GetComponent<Collider2D>();
     }
 
+    private WarfestTarget intendedTarget;
+
     public void Initialize(Vector2 direction, float force, float lifetime,
-        ShotMode shotMode = ShotMode.Normal, WarfestGameController owner = null)
+        ShotMode shotMode = ShotMode.Normal, WarfestGameController owner = null,
+        WarfestTarget target = null)
     {
         launchDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector2.up;
         impactImpulse = force;
         mode = shotMode;
         controller = owner;
+        intendedTarget = target;
         Destroy(gameObject, lifetime);
+    }
+
+    private void FixedUpdate()
+    {
+        if (spent || intendedTarget == null || mode == ShotMode.Piercing) return;
+        if (intendedTarget.IsBroken)
+        {
+            intendedTarget = null;
+            return;
+        }
+
+        Vector2 ballPos = transform.position;
+        Vector2 targetCenter = intendedTarget.Collider != null
+            ? (Vector2)intendedTarget.Collider.bounds.center
+            : (Vector2)intendedTarget.transform.position;
+
+        Rigidbody2D body = GetComponent<Rigidbody2D>();
+        if (body != null && body.bodyType == RigidbodyType2D.Dynamic)
+        {
+            Vector2 toTarget = targetCenter - ballPos;
+            if (toTarget.sqrMagnitude > 0.0001f)
+            {
+                float speed = Mathf.Max(12f, body.linearVelocity.magnitude);
+                body.linearVelocity = toTarget.normalized * speed;
+                launchDirection = toTarget.normalized;
+            }
+        }
+
+        float dist = Vector2.Distance(ballPos, targetCenter);
+        if (dist <= 0.35f)
+        {
+            ExecuteHit(intendedTarget, targetCenter);
+        }
     }
 
     private void OnCollisionEnter2D(Collision2D collision)
@@ -43,13 +80,29 @@ public sealed class WarfestBall : MonoBehaviour
         WarfestTarget target = collision.collider.GetComponent<WarfestTarget>();
         if (target == null) return;
 
+        // When a specific target was intended, only hit that exact target (unless skull piercing)
+        if (intendedTarget != null && mode != ShotMode.Piercing && target != intendedTarget)
+        {
+            if (ownCollider != null && collision.collider != null)
+            {
+                Physics2D.IgnoreCollision(ownCollider, collision.collider, true);
+            }
+            return;
+        }
+
         Vector2 contactPoint = collision.contactCount > 0
             ? collision.GetContact(0).point
             : (Vector2)transform.position;
+
+        ExecuteHit(target, contactPoint);
+    }
+
+    private void ExecuteHit(WarfestTarget target, Vector2 contactPoint)
+    {
+        if (spent || target == null || target.IsBroken) return;
+
         Rigidbody2D targetBody = target.Body;
 
-        // Missile booster: hand off to the controller's blast, which breaks the struck block and
-        // everything caught in its radius. Falls back to a plain break if fired without an owner.
         if (mode == ShotMode.Explosive)
         {
             spent = true;
@@ -59,8 +112,6 @@ public sealed class WarfestBall : MonoBehaviour
             return;
         }
 
-        // Skull booster: break the block, shove it, then stop colliding with it so the heavy ball
-        // keeps ploughing forward into the next target instead of stopping on the first one.
         if (mode == ShotMode.Piercing)
         {
             target.Break();
@@ -68,20 +119,17 @@ public sealed class WarfestBall : MonoBehaviour
             {
                 targetBody.AddForceAtPosition(launchDirection * impactImpulse, contactPoint, ForceMode2D.Impulse);
             }
-            if (ownCollider != null && collision.collider != null)
+            if (ownCollider != null && target.Collider != null)
             {
-                Physics2D.IgnoreCollision(ownCollider, collision.collider, true);
+                Physics2D.IgnoreCollision(ownCollider, target.Collider, true);
             }
-            return; // not spent - the skull ball carries on
+            return;
         }
 
-        // Standard shot.
         spent = true;
         target.Break();
 
-        // Break releases an authored 3D structure from its perfectly aligned kinematic pose.
-        // Apply the impact after that release so the struck block receives the full impulse.
-        if (targetBody != null && collision.contactCount > 0)
+        if (targetBody != null)
         {
             targetBody.AddForceAtPosition(launchDirection * impactImpulse, contactPoint, ForceMode2D.Impulse);
         }
