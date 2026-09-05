@@ -16,6 +16,7 @@ public sealed class WarfestGameController : MonoBehaviour
     private readonly List<GameObject> blocks = new List<GameObject>();
     private readonly List<Rigidbody2D> blockBodies = new List<Rigidbody2D>();
     private readonly List<Collider2D> blockColliders = new List<Collider2D>();
+    private readonly List<Collider2D> tableColliders = new List<Collider2D>();
     private readonly List<WarfestTarget> blockTargets = new List<WarfestTarget>();
     public List<WarfestTarget> BlockTargets => blockTargets;
     private readonly Collider2D[] targetOverlapResults = new Collider2D[16];
@@ -589,6 +590,14 @@ private static float GetModelMass(int variant)
         int shotLayer = LayerMask.NameToLayer("WarfestShot");
         if (tableLayer >= 0) aimCollisionMask &= ~(1 << tableLayer);
         if (shotLayer >= 0) aimCollisionMask &= ~(1 << shotLayer);
+        if (tableLayer >= 0 && shotLayer >= 0)
+        {
+            Physics2D.IgnoreLayerCollision(shotLayer, tableLayer, true);
+        }
+        if (shotLayer >= 0)
+        {
+            Physics2D.IgnoreLayerCollision(shotLayer, shotLayer, true);
+        }
     }
 
 private void EnsureCamera()
@@ -611,6 +620,7 @@ private void EnsureCamera()
     {
         explosionPool.Clear();
         nextExplosionPoolIndex = 0;
+        tableColliders.Clear();
         UnityEngine.SceneManagement.Scene activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
         if (!activeScene.isLoaded) return;
         GameObject[] roots = activeScene.GetRootGameObjects();
@@ -669,6 +679,7 @@ private void BuildWorld()
         // aligns the collision top with the visible metal surface rather than the image bounds.
         surface.size = new Vector2(TableColliderWidth, TableColliderHeight);
         surface.offset = new Vector2(0f, TableColliderOffsetY);
+        tableColliders.Add(surface);
     }
 
 private void CreateModelTable(WarfestLevelCatalog.ModelTableSpec spec, int index)
@@ -707,6 +718,7 @@ private void CreateModelTable(WarfestLevelCatalog.ModelTableSpec spec, int index
 
         BoxCollider2D collider = surface.GetComponent<BoxCollider2D>();
         collider.size = new Vector2(tableBounds.size.x, surfaceThickness);
+        tableColliders.Add(collider);
     }
 
 
@@ -1107,7 +1119,7 @@ private void Fire()
         }
         else if (boosted && booster == WarfestBooster.SkullShot)
         {
-            CreateBall(launchPosition, launchDirection, null, WarfestBall.ShotMode.Piercing);
+            CreateBall(launchPosition, launchDirection, intendedTarget, WarfestBall.ShotMode.Piercing);
         }
         else if (boosted && booster == WarfestBooster.Missile)
         {
@@ -1233,14 +1245,17 @@ private void Fire()
     {
         GameObject ball = new GameObject("Shot Ball", typeof(CircleCollider2D), typeof(Rigidbody2D), typeof(WarfestBall));
 
-        // The skull ball is a heavier, larger wrecking ball so its plough-through reads clearly.
+        // The skull ball is a heavier, 3x size wrecking ball with 4x force that smashes through all blocks.
         bool piercing = mode == WarfestBall.ShotMode.Piercing;
-        float radius = piercing ? ShotRadius * 1.55f : ShotRadius;
+        float radius = piercing ? ShotRadius * 3.0f : ShotRadius;
 
         int shotLayer = LayerMask.NameToLayer("WarfestShot");
         if (shotLayer >= 0) ball.layer = shotLayer;
         ball.transform.SetParent(worldRoot, false);
-        ball.transform.position = new Vector3(position.x, position.y, -0.22f);
+        Vector2 spawnPos = piercing
+            ? position + direction.normalized * (radius - ShotRadius)
+            : position;
+        ball.transform.position = new Vector3(spawnPos.x, spawnPos.y, -0.22f);
 
         if (ballModelPrefab != null)
         {
@@ -1283,6 +1298,15 @@ private void Fire()
         CircleCollider2D collider = ball.GetComponent<CircleCollider2D>();
         collider.radius = radius;
 
+        // Projectiles must never collide with or be deflected downward by the stage table
+        for (int i = 0; i < tableColliders.Count; i++)
+        {
+            if (tableColliders[i] != null)
+            {
+                Physics2D.IgnoreCollision(collider, tableColliders[i], true);
+            }
+        }
+
         // When the shot is committed to a specific block, ignore all other blocks so the projectile
         // exclusively targets and hits that exact block without being intercepted or deflected by others.
         if (intendedTarget != null && !piercing)
@@ -1300,13 +1324,14 @@ private void Fire()
 
         Rigidbody2D body = ball.GetComponent<Rigidbody2D>();
         body.bodyType = RigidbodyType2D.Dynamic;
-        body.mass = piercing ? 0.6f : 0.22f;
+        body.mass = piercing ? 2.4f : 0.22f;
         body.gravityScale = 0f;
         body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         body.interpolation = RigidbodyInterpolation2D.Interpolate;
-        body.linearVelocity = direction.normalized * ShotSpeed;
+        float launchSpeed = piercing ? ShotSpeed * 1.25f : ShotSpeed;
+        body.linearVelocity = direction.normalized * launchSpeed;
         body.angularVelocity = -direction.normalized.x * 540f;
-        float impact = (5.8f + level.difficulty * 0.5f) * (piercing ? 1.8f : 1f);
+        float impact = (5.8f + level.difficulty * 0.5f) * (piercing ? 7.2f : 1f);
         activeBalls++;
         ball.GetComponent<WarfestBall>().Initialize(direction, impact, ShotLifetime, mode, this, intendedTarget);
     }

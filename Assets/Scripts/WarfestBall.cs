@@ -20,13 +20,15 @@ public sealed class WarfestBall : MonoBehaviour
     private ShotMode mode = ShotMode.Normal;
     private WarfestGameController controller;
     private Collider2D ownCollider;
+    private WarfestTarget intendedTarget;
+    private float forwardSpeed = 17f;
+
+    private static readonly Collider2D[] s_overlapResults = new Collider2D[32];
 
     private void Awake()
     {
         ownCollider = GetComponent<Collider2D>();
     }
-
-    private WarfestTarget intendedTarget;
 
     public void Initialize(Vector2 direction, float force, float lifetime,
         ShotMode shotMode = ShotMode.Normal, WarfestGameController owner = null,
@@ -37,12 +39,50 @@ public sealed class WarfestBall : MonoBehaviour
         mode = shotMode;
         controller = owner;
         intendedTarget = target;
+        Rigidbody2D rb = GetComponent<Rigidbody2D>();
+        if (rb != null)
+        {
+            forwardSpeed = Mathf.Max(16f, rb.linearVelocity.magnitude);
+        }
         Destroy(gameObject, lifetime);
     }
 
     private void FixedUpdate()
     {
-        if (spent || intendedTarget == null || mode == ShotMode.Piercing) return;
+        if (spent) return;
+
+        if (mode == ShotMode.Piercing)
+        {
+            Rigidbody2D rb = GetComponent<Rigidbody2D>();
+            if (rb != null && rb.bodyType == RigidbodyType2D.Dynamic)
+            {
+                // Lock velocity strictly along the launch trajectory at full speed so that
+                // physics collisions never deflect or bounce the heavy wrecking ball downwards.
+                float currentSpeed = Mathf.Max(forwardSpeed, rb.linearVelocity.magnitude);
+                rb.linearVelocity = launchDirection * currentSpeed;
+            }
+
+            // Continuously sweep for targets within the 3x ball radius to ensure every block
+            // along the trajectory is pulverized as the wrecking ball plows through.
+            if (ownCollider != null)
+            {
+                float radius = (ownCollider is CircleCollider2D circle) ? circle.radius : 0.48f;
+                int hitCount = Physics2D.OverlapCircle(transform.position, radius, ContactFilter2D.noFilter, s_overlapResults);
+                for (int i = 0; i < hitCount; i++)
+                {
+                    Collider2D col = s_overlapResults[i];
+                    if (col == null || col == ownCollider) continue;
+                    WarfestTarget target = col.GetComponent<WarfestTarget>();
+                    if (target != null && !target.IsBroken)
+                    {
+                        ExecuteHit(target, col.bounds.center);
+                    }
+                }
+            }
+            return;
+        }
+
+        if (intendedTarget == null) return;
         if (intendedTarget.IsBroken)
         {
             intendedTarget = null;
@@ -77,8 +117,24 @@ public sealed class WarfestBall : MonoBehaviour
     {
         if (spent) return;
 
-        WarfestTarget target = collision.collider.GetComponent<WarfestTarget>();
-        if (target == null) return;
+        WarfestTarget target = collision.collider != null ? collision.collider.GetComponent<WarfestTarget>() : null;
+        if (target == null)
+        {
+            if (mode == ShotMode.Piercing)
+            {
+                if (ownCollider != null && collision.collider != null)
+                {
+                    Physics2D.IgnoreCollision(ownCollider, collision.collider, true);
+                }
+                Rigidbody2D rb = GetComponent<Rigidbody2D>();
+                if (rb != null && rb.bodyType == RigidbodyType2D.Dynamic)
+                {
+                    float currentSpeed = Mathf.Max(forwardSpeed, rb.linearVelocity.magnitude);
+                    rb.linearVelocity = launchDirection * currentSpeed;
+                }
+            }
+            return;
+        }
 
         // When a specific target was intended, only hit that exact target (unless skull piercing)
         if (intendedTarget != null && mode != ShotMode.Piercing && target != intendedTarget)
@@ -117,11 +173,25 @@ public sealed class WarfestBall : MonoBehaviour
             target.Break();
             if (targetBody != null)
             {
+                targetBody.bodyType = RigidbodyType2D.Dynamic;
+                targetBody.gravityScale = 1f;
                 targetBody.AddForceAtPosition(launchDirection * impactImpulse, contactPoint, ForceMode2D.Impulse);
             }
-            if (ownCollider != null && target.Collider != null)
+            if (ownCollider != null)
             {
-                Physics2D.IgnoreCollision(ownCollider, target.Collider, true);
+                Collider2D[] targetColliders = target.GetComponentsInChildren<Collider2D>();
+                for (int i = 0; i < targetColliders.Length; i++)
+                {
+                    if (targetColliders[i] != null) Physics2D.IgnoreCollision(ownCollider, targetColliders[i], true);
+                }
+            }
+
+            // Immediately re-assert velocity along launch direction to maintain forward momentum
+            Rigidbody2D rb = GetComponent<Rigidbody2D>();
+            if (rb != null && rb.bodyType == RigidbodyType2D.Dynamic)
+            {
+                float currentSpeed = Mathf.Max(forwardSpeed, rb.linearVelocity.magnitude);
+                rb.linearVelocity = launchDirection * currentSpeed;
             }
             return;
         }
