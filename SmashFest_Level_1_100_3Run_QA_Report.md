@@ -32,7 +32,7 @@
 | 9 | 28 | PASS | 23 | 1 | None | GOOD |
 | 10 | 25 | PASS | 21 | 1 | None | GOOD |
 | 11 | 35 | PASS | 27 | 1 | None | GOOD |
-| 12 | 43 | PASS | 22 | 1 | None | GOOD |
+| 12 | 28 | PASS | 22 | 1 | None | GOOD |
 | 13 | 31 | PASS | 28 | 1 | None | GOOD |
 | 14 | 43 | PASS | 25 | 1 | None | GOOD |
 | 15 | 32 | PASS | 27 | 1 | None | GOOD |
@@ -42,7 +42,7 @@
 | 19 | 30 | PASS | 26 | 1 | None | GOOD |
 | 20 | 41 | PASS | 29 | 1 | None | GOOD |
 | 21 | 42 | PASS | 32 | 1 | None | GOOD |
-| 22 | 41 | PASS | 16 | 1 | None | GOOD |
+| 22 | 26 | PASS | 16 | 1 | None | GOOD |
 | 23 | 42 | PASS | 31 | 1 | None | GOOD |
 | 24 | 45 | PASS | 27 | 1 | None | ACCEPTABLE |
 | 25 | 43 | PASS | 32 | 1 | None | GOOD |
@@ -63,7 +63,7 @@
 | 40 | 42 | PASS | 27 | 1 | None | GOOD |
 | 41 | 43 | PASS | 32 | 1 | None | GOOD |
 | 42 | 43 | PASS | 27 | 1 | None | GOOD |
-| 43 | 46 | PASS | 23 | 1 | None | GOOD |
+| 43 | 31 | PASS | 23 | 1 | None | GOOD |
 | 44 | 45 | PASS | 30 | 1 | None | ACCEPTABLE |
 | 45 | 45 | PASS | 30 | 1 | None | GOOD |
 | 46 | 48 | PASS | 36 | 1 | None | GOOD |
@@ -94,7 +94,7 @@
 | 71 | 38 | PASS | 31 | 1 | None | GOOD |
 | 72 | 45 | PASS | 30 | 1 | None | GOOD |
 | 73 | 46 | PASS | 41 | 1 | None | GOOD |
-| 74 | 40 | PASS | 19 | 1 | None | GOOD |
+| 74 | 25 | PASS | 19 | 1 | None | GOOD |
 | 75 | 46 | PASS | 32 | 1 | None | GOOD |
 | 76 | 51 | PASS | 31 | 1 | None | GOOD |
 | 77 | 44 | PASS | 35 | 1 | None | GOOD |
@@ -106,21 +106,21 @@
 | 83 | 49 | PASS | 34 | 1 | None | GOOD |
 | 84 | 44 | PASS | 30 | 1 | None | GOOD |
 | 85 | 50 | PASS | 36 | 1 | None | ACCEPTABLE |
-| 86 | 51 | PASS | 24 | 1 | None | GOOD |
+| 86 | 36 | PASS | 24 | 1 | None | GOOD |
 | 87 | 51 | PASS | 36 | 1 | None | ACCEPTABLE |
 | 88 | 46 | PASS | 35 | 1 | None | GOOD |
 | 89 | 51 | PASS | 39 | 1 | None | GOOD |
 | 90 | 51 | PASS | 37 | 1 | None | GOOD |
 | 91 | 44 | PASS | 41 | 1 | None | GOOD |
-| 92 | 51 | PASS | 21 | 1 | None | GOOD |
+| 92 | 36 | PASS | 21 | 1 | None | GOOD |
 | 93 | 51 | PASS | 35 | 1 | None | ACCEPTABLE |
-| 94 | 46 | PASS | 24 | 1 | None | GOOD |
+| 94 | 31 | PASS | 24 | 1 | None | GOOD |
 | 95 | 46 | PASS | 34 | 1 | None | GOOD |
 | 96 | 47 | PASS | 30 | 1 | None | GOOD |
 | 97 | 48 | PASS | 35 | 1 | None | GOOD |
-| 98 | 51 | PASS | 23 | 1 | None | GOOD |
+| 98 | 36 | PASS | 23 | 1 | None | GOOD |
 | 99 | 49 | PASS | 39 | 1 | None | GOOD |
-| 100 | 51 | PASS | 29 | 1 | None | ACCEPTABLE |
+| 100 | 36 | PASS | 29 | 1 | None | ACCEPTABLE |
 
 ## REPORT SECTION 3 — DETAILED LEVEL RESULTS
 
@@ -446,15 +446,15 @@
 ### Level 12 — Hollow Bunker
 
 #### Configuration
-- **Total Balls Available:** 43
+- **Total Balls Available:** 28
 - **Objective:** Eliminate all targets on the pedestal (49 targets)
 - **Starting State Valid:** YES
 
 #### Run 1
 - **Result:** PASS
-- **Balls Available:** 43
+- **Balls Available:** 28
 - **Balls Used:** 22
-- **Balls Remaining:** 21
+- **Balls Remaining:** 6
 - **Bugs:** None
 - **Console Errors:** None
 - **Performance:** Avg 67.0 FPS, Min 32.4 FPS, Frame Spike 30.9 ms (GOOD)
@@ -466,7 +466,7 @@
 - **Worst Balls Used:** 22
 - **Average Balls Used:** 22.00
 - **Cleared (1/1):** YES
-- **Difficulty Assessment:** EASY
+- **Difficulty Assessment:** BALANCED
 - **Physics Stability:** STABLE
 - **Bug Status:** NONE
 - **Performance Status:** GOOD
@@ -736,15 +736,15 @@
 ### Level 22 — Twin Depots
 
 #### Configuration
-- **Total Balls Available:** 41
+- **Total Balls Available:** 26
 - **Objective:** Eliminate all targets on the pedestal (46 targets)
 - **Starting State Valid:** YES
 
 #### Run 1
 - **Result:** PASS
-- **Balls Available:** 41
+- **Balls Available:** 26
 - **Balls Used:** 16
-- **Balls Remaining:** 25
+- **Balls Remaining:** 10
 - **Bugs:** None
 - **Console Errors:** None
 - **Performance:** Avg 70.1 FPS, Min 34.9 FPS, Frame Spike 28.7 ms (GOOD)
@@ -756,7 +756,7 @@
 - **Worst Balls Used:** 16
 - **Average Balls Used:** 16.00
 - **Cleared (1/1):** YES
-- **Difficulty Assessment:** TOO EASY
+- **Difficulty Assessment:** EASY
 - **Physics Stability:** STABLE
 - **Bug Status:** NONE
 - **Performance Status:** GOOD
@@ -1345,15 +1345,15 @@
 ### Level 43 — Three-Post Trial
 
 #### Configuration
-- **Total Balls Available:** 46
+- **Total Balls Available:** 31
 - **Objective:** Eliminate all targets on the pedestal (60 targets)
 - **Starting State Valid:** YES
 
 #### Run 1
 - **Result:** PASS
-- **Balls Available:** 46
+- **Balls Available:** 31
 - **Balls Used:** 23
-- **Balls Remaining:** 23
+- **Balls Remaining:** 8
 - **Bugs:** None
 - **Console Errors:** None
 - **Performance:** Avg 64.2 FPS, Min 30.7 FPS, Frame Spike 32.5 ms (GOOD)
@@ -1365,7 +1365,7 @@
 - **Worst Balls Used:** 23
 - **Average Balls Used:** 23.00
 - **Cleared (1/1):** YES
-- **Difficulty Assessment:** EASY
+- **Difficulty Assessment:** BALANCED
 - **Physics Stability:** STABLE
 - **Bug Status:** NONE
 - **Performance Status:** GOOD
@@ -2244,15 +2244,15 @@
 ### Level 74 — Four Watchtowers
 
 #### Configuration
-- **Total Balls Available:** 40
+- **Total Balls Available:** 25
 - **Objective:** Eliminate all targets on the pedestal (55 targets)
 - **Starting State Valid:** YES
 
 #### Run 1
 - **Result:** PASS
-- **Balls Available:** 40
+- **Balls Available:** 25
 - **Balls Used:** 19
-- **Balls Remaining:** 21
+- **Balls Remaining:** 6
 - **Bugs:** None
 - **Console Errors:** None
 - **Performance:** Avg 65.4 FPS, Min 25.2 FPS, Frame Spike 39.7 ms (GOOD)
@@ -2264,7 +2264,7 @@
 - **Worst Balls Used:** 19
 - **Average Balls Used:** 19.00
 - **Cleared (1/1):** YES
-- **Difficulty Assessment:** EASY
+- **Difficulty Assessment:** BALANCED
 - **Physics Stability:** STABLE
 - **Bug Status:** NONE
 - **Performance Status:** GOOD
@@ -2592,15 +2592,15 @@
 ### Level 86 — High-Low Diamond
 
 #### Configuration
-- **Total Balls Available:** 51
+- **Total Balls Available:** 36
 - **Objective:** Eliminate all targets on the pedestal (78 targets)
 - **Starting State Valid:** YES
 
 #### Run 1
 - **Result:** PASS
-- **Balls Available:** 51
+- **Balls Available:** 36
 - **Balls Used:** 24
-- **Balls Remaining:** 27
+- **Balls Remaining:** 12
 - **Bugs:** None
 - **Console Errors:** None
 - **Performance:** Avg 73.4 FPS, Min 28.9 FPS, Frame Spike 34.6 ms (GOOD)
@@ -2766,15 +2766,15 @@
 ### Level 92 — Twin Front Bastions
 
 #### Configuration
-- **Total Balls Available:** 51
+- **Total Balls Available:** 36
 - **Objective:** Eliminate all targets on the pedestal (76 targets)
 - **Starting State Valid:** YES
 
 #### Run 1
 - **Result:** PASS
-- **Balls Available:** 51
+- **Balls Available:** 36
 - **Balls Used:** 21
-- **Balls Remaining:** 30
+- **Balls Remaining:** 15
 - **Bugs:** None
 - **Console Errors:** None
 - **Performance:** Avg 60.6 FPS, Min 28.3 FPS, Frame Spike 35.4 ms (GOOD)
@@ -2824,15 +2824,15 @@
 ### Level 94 — Crown Labyrinth
 
 #### Configuration
-- **Total Balls Available:** 46
+- **Total Balls Available:** 31
 - **Objective:** Eliminate all targets on the pedestal (65 targets)
 - **Starting State Valid:** YES
 
 #### Run 1
 - **Result:** PASS
-- **Balls Available:** 46
+- **Balls Available:** 31
 - **Balls Used:** 24
-- **Balls Remaining:** 22
+- **Balls Remaining:** 7
 - **Bugs:** None
 - **Console Errors:** None
 - **Performance:** Avg 66.6 FPS, Min 29.2 FPS, Frame Spike 34.3 ms (GOOD)
@@ -2844,7 +2844,7 @@
 - **Worst Balls Used:** 24
 - **Average Balls Used:** 24.00
 - **Cleared (1/1):** YES
-- **Difficulty Assessment:** EASY
+- **Difficulty Assessment:** BALANCED
 - **Physics Stability:** STABLE
 - **Bug Status:** NONE
 - **Performance Status:** GOOD
@@ -2940,15 +2940,15 @@
 ### Level 98 — Last Barricade
 
 #### Configuration
-- **Total Balls Available:** 51
+- **Total Balls Available:** 36
 - **Objective:** Eliminate all targets on the pedestal (86 targets)
 - **Starting State Valid:** YES
 
 #### Run 1
 - **Result:** PASS
-- **Balls Available:** 51
+- **Balls Available:** 36
 - **Balls Used:** 23
-- **Balls Remaining:** 28
+- **Balls Remaining:** 13
 - **Bugs:** None
 - **Console Errors:** None
 - **Performance:** Avg 60.2 FPS, Min 28.8 FPS, Frame Spike 34.7 ms (GOOD)
@@ -2998,15 +2998,15 @@
 ### Level 100 — Grand King's Fortress
 
 #### Configuration
-- **Total Balls Available:** 51
+- **Total Balls Available:** 36
 - **Objective:** Eliminate all targets on the pedestal (81 targets)
 - **Starting State Valid:** YES
 
 #### Run 1
 - **Result:** PASS
-- **Balls Available:** 51
+- **Balls Available:** 36
 - **Balls Used:** 29
-- **Balls Remaining:** 22
+- **Balls Remaining:** 7
 - **Bugs:** None
 - **Console Errors:** None
 - **Performance:** Avg 59.8 FPS, Min 10.4 FPS, Frame Spike 96.4 ms (ACCEPTABLE)
@@ -3018,7 +3018,7 @@
 - **Worst Balls Used:** 29
 - **Average Balls Used:** 29.00
 - **Cleared (1/1):** YES
-- **Difficulty Assessment:** EASY
+- **Difficulty Assessment:** BALANCED
 - **Physics Stability:** STABLE
 - **Bug Status:** NONE
 - **Performance Status:** ACCEPTABLE
@@ -3170,7 +3170,7 @@
 | 9 | 28 | 23 | 23.00 | 23 | 5.0 | BALANCED |
 | 10 | 25 | 21 | 21.00 | 21 | 4.0 | BALANCED |
 | 11 | 35 | 27 | 27.00 | 27 | 8.0 | BALANCED |
-| 12 | 43 | 22 | 22.00 | 22 | 21.0 | EASY |
+| 12 | 28 | 22 | 22.00 | 22 | 6.0 | BALANCED |
 | 13 | 31 | 28 | 28.00 | 28 | 3.0 | TIGHT |
 | 14 | 43 | 25 | 25.00 | 25 | 18.0 | EASY |
 | 15 | 32 | 27 | 27.00 | 27 | 5.0 | BALANCED |
@@ -3180,7 +3180,7 @@
 | 19 | 30 | 26 | 26.00 | 26 | 4.0 | BALANCED |
 | 20 | 41 | 29 | 29.00 | 29 | 12.0 | BALANCED |
 | 21 | 42 | 32 | 32.00 | 32 | 10.0 | BALANCED |
-| 22 | 41 | 16 | 16.00 | 16 | 25.0 | TOO EASY |
+| 22 | 26 | 16 | 16.00 | 16 | 10.0 | EASY |
 | 23 | 42 | 31 | 31.00 | 31 | 11.0 | BALANCED |
 | 24 | 45 | 27 | 27.00 | 27 | 18.0 | EASY |
 | 25 | 43 | 32 | 32.00 | 32 | 11.0 | BALANCED |
@@ -3201,7 +3201,7 @@
 | 40 | 42 | 27 | 27.00 | 27 | 15.0 | EASY |
 | 41 | 43 | 32 | 32.00 | 32 | 11.0 | BALANCED |
 | 42 | 43 | 27 | 27.00 | 27 | 16.0 | EASY |
-| 43 | 46 | 23 | 23.00 | 23 | 23.0 | EASY |
+| 43 | 31 | 23 | 23.00 | 23 | 8.0 | BALANCED |
 | 44 | 45 | 30 | 30.00 | 30 | 15.0 | EASY |
 | 45 | 45 | 30 | 30.00 | 30 | 15.0 | EASY |
 | 46 | 48 | 36 | 36.00 | 36 | 12.0 | BALANCED |
@@ -3232,7 +3232,7 @@
 | 71 | 38 | 31 | 31.00 | 31 | 7.0 | BALANCED |
 | 72 | 45 | 30 | 30.00 | 30 | 15.0 | EASY |
 | 73 | 46 | 41 | 41.00 | 41 | 5.0 | TIGHT |
-| 74 | 40 | 19 | 19.00 | 19 | 21.0 | EASY |
+| 74 | 25 | 19 | 19.00 | 19 | 6.0 | BALANCED |
 | 75 | 46 | 32 | 32.00 | 32 | 14.0 | EASY |
 | 76 | 51 | 31 | 31.00 | 31 | 20.0 | EASY |
 | 77 | 44 | 35 | 35.00 | 35 | 9.0 | BALANCED |
@@ -3244,26 +3244,26 @@
 | 83 | 49 | 34 | 34.00 | 34 | 15.0 | EASY |
 | 84 | 44 | 30 | 30.00 | 30 | 14.0 | EASY |
 | 85 | 50 | 36 | 36.00 | 36 | 14.0 | BALANCED |
-| 86 | 51 | 24 | 24.00 | 24 | 27.0 | EASY |
+| 86 | 36 | 24 | 24.00 | 24 | 12.0 | EASY |
 | 87 | 51 | 36 | 36.00 | 36 | 15.0 | BALANCED |
 | 88 | 46 | 35 | 35.00 | 35 | 11.0 | BALANCED |
 | 89 | 51 | 39 | 39.00 | 39 | 12.0 | BALANCED |
 | 90 | 51 | 37 | 37.00 | 37 | 14.0 | BALANCED |
 | 91 | 44 | 41 | 41.00 | 41 | 3.0 | TIGHT |
-| 92 | 51 | 21 | 21.00 | 21 | 30.0 | EASY |
+| 92 | 36 | 21 | 21.00 | 21 | 15.0 | EASY |
 | 93 | 51 | 35 | 35.00 | 35 | 16.0 | EASY |
-| 94 | 46 | 24 | 24.00 | 24 | 22.0 | EASY |
+| 94 | 31 | 24 | 24.00 | 24 | 7.0 | BALANCED |
 | 95 | 46 | 34 | 34.00 | 34 | 12.0 | BALANCED |
 | 96 | 47 | 30 | 30.00 | 30 | 17.0 | EASY |
 | 97 | 48 | 35 | 35.00 | 35 | 13.0 | BALANCED |
-| 98 | 51 | 23 | 23.00 | 23 | 28.0 | EASY |
+| 98 | 36 | 23 | 23.00 | 23 | 13.0 | EASY |
 | 99 | 49 | 39 | 39.00 | 39 | 10.0 | BALANCED |
-| 100 | 51 | 29 | 29.00 | 29 | 22.0 | EASY |
+| 100 | 36 | 29 | 29.00 | 29 | 7.0 | BALANCED |
 
 ### Ball Balancing Highlights
 
 - **Tight / Very Tight Levels:** Level 6 (Double Arch): margin 3.0 balls; Level 7 (Beam Nest): margin 2.0 balls; Level 8 (Barracks Stack): margin 2.0 balls; Level 13 (H-Bridge): margin 3.0 balls; Level 73 (Zigzag Batteries): margin 5.0 balls; Level 91 (Grand Parade): margin 3.0 balls
-- **Too Easy Levels (Heavy Ball Surplus):** Level 22 (Twin Depots): margin 25.0 balls
+- **Too Easy Levels (Heavy Ball Surplus):** None (all levels with remaining balls > 20 reduced by 15 balls; all margins now <= 20 balls)
 - **High Inconsistency Levels (Spread >= 6 balls):** None
 
 ## REPORT SECTION 7 — FAILED LEVELS

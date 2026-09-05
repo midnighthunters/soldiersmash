@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -185,21 +186,44 @@ public static class WarfestSession
         }
     }
 
+    // Specific level ball reductions where QA validation recorded remaining balls > 20.
+    // Each target level has its starting ball allowance reduced by exactly 15.
+    private static readonly Dictionary<int, int> BallAllowanceAdjustments = new Dictionary<int, int>
+    {
+        { 12, -15 }, // Level 12 (Hollow Bunker): 43 -> 28
+        { 22, -15 }, // Level 22 (Twin Depots): 41 -> 26
+        { 43, -15 }, // Level 43 (Three-Post Trial): 46 -> 31
+        { 74, -15 }, // Level 74 (Four Watchtowers): 40 -> 25
+        { 86, -15 }, // Level 86 (High-Low Diamond): 51 -> 36
+        { 92, -15 }, // Level 92 (Twin Front Bastions): 51 -> 36
+        { 94, -15 }, // Level 94 (Crown Labyrinth): 46 -> 31
+        { 98, -15 }, // Level 98 (Last Barricade): 51 -> 36
+        { 100, -15 } // Level 100 (Grand King's Fortress): 51 -> 36
+    };
+
     // The authored campaign scales its block budget from 20 (level 1) to 57 (level 100). Every
     // block is a target, so the ball allowance is derived from that budget with a generous,
     // stage-tapered margin above a competent clear (per the brief's shot-budget philosophy:
     // ~25-40% extra early, easing toward ~15% late). The live game uses half of that original
     // allowance, rounded up so an odd allowance never costs an additional full shot.
-public static int GetBallAllowance(int zeroBasedLevel)
+    public static int GetBallAllowance(int zeroBasedLevel)
     {
         int levelIndex = Mathf.Clamp(zeroBasedLevel, 0, LevelCount - 1);
+        int levelNumber = levelIndex + 1;
         int blocks = WarfestLevelCatalog.CampaignBlockCount(levelIndex);
         float factor =
             levelIndex < 10 ? 1.6f :
             levelIndex < 30 ? 1.4f :
             levelIndex < 60 ? 1.25f : 1.15f;
         int originalAllowance = Mathf.Clamp(Mathf.CeilToInt(blocks * factor) + 4, 20, 90);
-        return Mathf.CeilToInt(originalAllowance * 0.5f) + 6;
+        int allowance = Mathf.CeilToInt(originalAllowance * 0.5f) + 6;
+
+        if (BallAllowanceAdjustments.TryGetValue(levelNumber, out int adjustment))
+        {
+            allowance = Mathf.Max(10, allowance + adjustment);
+        }
+
+        return allowance;
     }
 
 public static void SelectLevel(int zeroBasedLevel)
