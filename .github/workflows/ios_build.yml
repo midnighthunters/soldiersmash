@@ -235,13 +235,14 @@ jobs:
           plutil -insert manageAppVersionAndBuildNumber -bool NO "$RUNNER_TEMP/ExportOptions.plist"
           plutil -insert stripSwiftSymbols -bool YES "$RUNNER_TEMP/ExportOptions.plist"
 
-          if [ -n "${APPLE_PROVISIONING_PROFILE_BASE64:-}" ]; then
-            echo "Configuring manual signing with provisioning profile soldiersmash_prod_profile"
+          if [ -n "${APPLE_CERTIFICATE_BASE64:-}" ] && [ -n "${APPLE_PROVISIONING_PROFILE_BASE64:-}" ]; then
+            echo "Configuring manual signing with imported certificate and provisioning profile"
             plutil -insert signingStyle -string manual "$RUNNER_TEMP/ExportOptions.plist"
             plutil -insert signingCertificate -string "Apple Distribution" "$RUNNER_TEMP/ExportOptions.plist"
             plutil -insert provisioningProfiles -dictionary "$RUNNER_TEMP/ExportOptions.plist"
             plutil -insert "provisioningProfiles.com\.zemolabs\.soldiersmash" -string "soldiersmash_prod_profile" "$RUNNER_TEMP/ExportOptions.plist"
           else
+            echo "Configuring automatic signing with App Store Connect API key"
             plutil -insert signingStyle -string automatic "$RUNNER_TEMP/ExportOptions.plist"
           fi
 
