@@ -32,3 +32,7 @@ Assets/QA/
 MONSTERDOKU/
 *.p8
 *.mobileprovision
+*.key
+*.csr
+*.cer
+*.p12
