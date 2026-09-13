@@ -2295,11 +2295,13 @@ public void RegisterTargetBroken(WarfestTarget target)
 
     private void BuildBoosterHud()
     {
-        Vector2 buttonSize = new Vector2(0.17f, 0.080f);
-        CreateBoosterButton(WarfestBooster.InfiniteBalls, new Vector2(0.105f, 0.30f), buttonSize);
-        CreateBoosterButton(WarfestBooster.SpreadShot, new Vector2(0.105f, 0.185f), buttonSize);
-        CreateBoosterButton(WarfestBooster.SkullShot, new Vector2(0.895f, 0.30f), buttonSize);
-        CreateBoosterButton(WarfestBooster.Missile, new Vector2(0.895f, 0.185f), buttonSize);
+        // 20% larger size (increased by 1.2x from 0.17x0.080)
+        Vector2 buttonSize = new Vector2(0.204f, 0.096f);
+        // Shifted below table shelf: top row at Y=0.240f (clears table), bottom row at Y=0.130f
+        CreateBoosterButton(WarfestBooster.InfiniteBalls, new Vector2(0.115f, 0.240f), buttonSize);
+        CreateBoosterButton(WarfestBooster.SpreadShot, new Vector2(0.115f, 0.130f), buttonSize);
+        CreateBoosterButton(WarfestBooster.SkullShot, new Vector2(0.885f, 0.240f), buttonSize);
+        CreateBoosterButton(WarfestBooster.Missile, new Vector2(0.885f, 0.130f), buttonSize);
 
         Image panel = CreateImage(safeAreaRoot, "Booster Status", new Color(0.055f, 0.12f, 0.20f, 0.94f),
             new Vector2(0.5f, 0.835f), new Vector2(0.74f, 0.075f));
@@ -2391,7 +2393,7 @@ private void RefreshBoosterStatus()
         badge.raycastTarget = false;
         boosterBadgeImages[index] = badge;
 
-        Text badgeText = CreateText(badge.transform, "Booster Badge Label", "0", 18, Color.white,
+        Text badgeText = CreateText(badge.transform, "Booster Badge Label", "0", 20, Color.white,
             TextAnchor.MiddleCenter, new Vector2(0.5f, 0.52f), Vector2.one, headingFont);
         badgeText.raycastTarget = false;
         AddTextOutline(badgeText, new Color(0.10f, 0.10f, 0.10f, 0.85f), new Vector2(1.2f, -1.2f));
