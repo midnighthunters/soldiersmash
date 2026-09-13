@@ -198,6 +198,7 @@ public sealed class WarfestGameController : MonoBehaviour
         Application.runInBackground = true;
         Application.targetFrameRate = 120;
         QualitySettings.vSyncCount = 0;
+        QualitySettings.anisotropicFiltering = AnisotropicFiltering.ForceEnable;
         Time.fixedDeltaTime = Mathf.Min(0.04f, 0.02f * Mathf.Max(1f, Time.timeScale));
 
         if (headingFont == null) headingFont = WarfestFontResolver.HeadingFont;
@@ -398,6 +399,10 @@ private bool HasAnyBoxPrefab()
     private Material CreateBrightModelMaterial(Texture2D texture, string materialName)
     {
         if (texture == null) return null;
+        texture.filterMode = FilterMode.Trilinear;
+        texture.anisoLevel = 8;
+        texture.mipMapBias = -0.5f;
+
         Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
         if (shader == null) shader = Shader.Find("Sprites/Default");
         if (shader == null) return null;
@@ -965,11 +970,13 @@ private void CreateModelBox(WarfestLevelCatalog.ModelBlockSpec spec, int index)
         blockDepthLayers.Add(spec.depthLayer);
     }
 
-private static float GetModelYRotation(int variant)
+    private static float GetModelYRotation(int variant)
     {
-        // Both models face the player. long_box2 (variant 0) is flipped 180 on Y per art direction,
-        // and the king keeps its front-facing 180 orientation.
-        return 180f;
+        switch (variant)
+        {
+            case WarfestLevelCatalog.SANDBAG: return 90f; // sandbag barrier faces along the table
+            default: return 180f; // barrels, soldier, king, tank, turtle, boxes all face directly forward at player
+        }
     }
 
 
@@ -2171,7 +2178,7 @@ public void RegisterTargetBroken(WarfestTarget target)
         musicSource.playOnAwake = false;
         musicSource.loop = true;
         musicSource.spatialBlend = 0f;
-        musicSource.volume = 0.22f;
+        musicSource.volume = 0.44f;
 
         if (s_shootClip == null)
         {
@@ -2363,32 +2370,23 @@ private void RefreshBoosterStatus()
     }
 
 
-private void CreateBoosterButton(WarfestBooster booster, Vector2 center, Vector2 size)
+    private void CreateBoosterButton(WarfestBooster booster, Vector2 center, Vector2 size)
     {
         int index = (int)booster;
-        // Left boosters (InfiniteBalls = 0, SpreadShot = 2) use Green plate from warfest_plates.
-        // Right boosters (SkullShot = 1, Missile = 3) use Red plate from warfest_plates.
-        bool isGreen = booster == WarfestBooster.InfiniteBalls || booster == WarfestBooster.SpreadShot;
-        Sprite plateSprite = isGreen ? settingsEnabledSprite : settingsDisabledSprite;
+        Sprite boosterSprite = GetBoosterSprite(booster);
 
-        Button button = CreateSpriteButton(safeAreaRoot, "Booster " + booster, plateSprite, center, size);
+        Button button = CreateSpriteButton(safeAreaRoot, "Booster " + booster, boosterSprite, center, size);
         button.transition = Selectable.Transition.None;
         button.navigation = new Navigation { mode = Navigation.Mode.None };
         boosterButtons[index] = button;
-        Image plateImage = button.GetComponent<Image>();
-        plateImage.preserveAspect = true;
-        boosterButtonImages[index] = plateImage;
+        Image buttonImage = button.GetComponent<Image>();
+        buttonImage.preserveAspect = true;
+        boosterButtonImages[index] = buttonImage;
+        boosterIconImages[index] = buttonImage;
 
-        // Nested booster graphic icon
-        Image icon = CreateSpriteImage(button.transform, "Booster Icon", GetBoosterSprite(booster), Color.white,
-            new Vector2(0.5f, 0.5f), new Vector2(0.78f, 0.78f), true);
-        icon.raycastTarget = false;
-        boosterIconImages[index] = icon;
-
-        // Count badge using the green/red plate
-        Sprite badgeSprite = isGreen ? settingsEnabledSprite : settingsDisabledSprite;
-        Image badge = CreateSpriteImage(button.transform, "Booster Badge", badgeSprite,
-            Color.white, new Vector2(0.80f, 0.20f), new Vector2(0.42f, 0.42f), true);
+        // Count badge using the green plate from warfest_plates (settingsEnabledSprite)
+        Image badge = CreateSpriteImage(button.transform, "Booster Badge", settingsEnabledSprite,
+            Color.white, new Vector2(0.82f, 0.18f), new Vector2(0.44f, 0.44f), true);
         badge.color = Color.white;
         badge.raycastTarget = false;
         boosterBadgeImages[index] = badge;
@@ -2421,7 +2419,7 @@ private void RefreshHud()
 
     // Repaints every booster button: dims the ones the player is out of, shows the owned count (or
     // a "+" prompt when empty) on the badge, and lights the glow on whichever booster is active.
-private void RefreshBoosterHud()
+    private void RefreshBoosterHud()
     {
         bool selectionLocked = hasArmedBooster || infiniteBallsActive;
         for (int i = 0; i < WarfestSession.BoosterCount; i++)
@@ -2430,7 +2428,6 @@ private void RefreshBoosterHud()
             int count = WarfestSession.GetBoosterCount(booster);
             bool owned = count > 0;
             bool isThisBoosterArmed = hasArmedBooster && armedBooster == booster;
-            bool isGreen = booster == WarfestBooster.InfiniteBalls || booster == WarfestBooster.SpreadShot;
 
             if (boosterButtons[i] != null)
             {
@@ -2439,17 +2436,14 @@ private void RefreshBoosterHud()
             }
             if (boosterButtonImages[i] != null)
             {
-                // When owned > 0, plate is full color; when empty (0), plate dims
+                // When owned > 0, booster graphic is full bright; when empty (0), it dims
                 boosterButtonImages[i].color = owned ? Color.white : new Color(0.55f, 0.55f, 0.55f, 0.85f);
-            }
-            if (boosterIconImages[i] != null)
-            {
-                boosterIconImages[i].color = owned ? Color.white : new Color(0.60f, 0.60f, 0.60f, 0.75f);
             }
             if (boosterBadgeImages[i] != null)
             {
-                // Badge is green when in stock, red when out of stock
-                boosterBadgeImages[i].sprite = owned ? settingsEnabledSprite : settingsDisabledSprite;
+                // Count badge always uses the green plate from warfest_plates
+                boosterBadgeImages[i].sprite = settingsEnabledSprite;
+                boosterBadgeImages[i].color = owned ? Color.white : new Color(0.65f, 0.65f, 0.65f, 0.85f);
             }
             if (boosterCountLabels[i] != null)
             {

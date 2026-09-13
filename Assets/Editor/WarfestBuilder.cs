@@ -33,7 +33,10 @@ namespace Warfest.Editor
             else
             {
                 Debug.LogError($"[WarfestBuilder] iOS Build failed with result: {summary.result}, errors: {summary.totalErrors}");
-                EditorApplication.Exit(1);
+                if (Application.isBatchMode)
+                {
+                    EditorApplication.Exit(1);
+                }
             }
         }
     }

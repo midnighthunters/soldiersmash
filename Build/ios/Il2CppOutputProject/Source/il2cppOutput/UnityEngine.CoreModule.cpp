@@ -1887,6 +1887,10 @@ struct AnimationCurve_tCBFFAAD05CEBB35EF8D8631BD99914BE1A6BB354_marshaled_com
 	intptr_t ___m_Ptr;
 	int32_t ___m_RequiresNativeCleanup;
 };
+struct AnisotropicFiltering_t4D9AB1E10B26E9F81E6209E1346D588E15EABBEA 
+{
+	int32_t ___value__;
+};
 struct ApplicationMemoryUsage_t1845D90DBC323D79B941A7E832A138BDE29A5FD0 
 {
 	int32_t ___value__;
@@ -32068,6 +32072,14 @@ IL2CPP_EXTERN_C IL2CPP_METHOD_ATTR float QualitySettings_get_meshLodThreshold_m7
 	_il2cpp_icall_func = (QualitySettings_get_meshLodThreshold_m78C5BEC88F9170399DC77CE45828E90C9937B4AE_ftn)il2cpp_codegen_resolve_icall ("UnityEngine.QualitySettings::get_meshLodThreshold()");
 	float icallRetVal = _il2cpp_icall_func();
 	return icallRetVal;
+}
+IL2CPP_EXTERN_C IL2CPP_METHOD_ATTR void QualitySettings_set_anisotropicFiltering_mAD1880874C1C40EB25B6D69E42CF13A82499FF9F (int32_t ___0_value, const RuntimeMethod* method) 
+{
+	typedef void (*QualitySettings_set_anisotropicFiltering_mAD1880874C1C40EB25B6D69E42CF13A82499FF9F_ftn) (int32_t);
+	static QualitySettings_set_anisotropicFiltering_mAD1880874C1C40EB25B6D69E42CF13A82499FF9F_ftn _il2cpp_icall_func;
+	if (!_il2cpp_icall_func)
+	_il2cpp_icall_func = (QualitySettings_set_anisotropicFiltering_mAD1880874C1C40EB25B6D69E42CF13A82499FF9F_ftn)il2cpp_codegen_resolve_icall ("UnityEngine.QualitySettings::set_anisotropicFiltering(UnityEngine.AnisotropicFiltering)");
+	_il2cpp_icall_func(___0_value);
 }
 IL2CPP_EXTERN_C IL2CPP_METHOD_ATTR int32_t QualitySettings_get_maximumLODLevel_m0233F6EB6B183F664E3CAD22F5FFD1D820F568D3 (const RuntimeMethod* method) 
 {

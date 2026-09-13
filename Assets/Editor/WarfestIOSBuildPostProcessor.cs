@@ -60,8 +60,17 @@ namespace Warfest.Editor
                     }
                 }
 
+                if (!content.Contains("ITSAppUsesNonExemptEncryption"))
+                {
+                    int lastDictIdx = content.LastIndexOf("</dict>", StringComparison.OrdinalIgnoreCase);
+                    if (lastDictIdx >= 0)
+                    {
+                        content = content.Insert(lastDictIdx, "    <key>ITSAppUsesNonExemptEncryption</key>\n    <false />\n  ");
+                    }
+                }
+
                 File.WriteAllText(plistPath, content);
-                Debug.Log("[WarfestIOSBuildPostProcessor] Enforced Portrait orientation in Info.plist");
+                Debug.Log("[WarfestIOSBuildPostProcessor] Enforced Portrait orientation and non-exempt encryption in Info.plist");
 
                 EnsureAppIcons(pathToBuiltProject);
             }

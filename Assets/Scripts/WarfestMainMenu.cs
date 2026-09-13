@@ -737,7 +737,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
             menuMusicSource.playOnAwake = false;
             menuMusicSource.loop = true;
             menuMusicSource.spatialBlend = 0f;
-            menuMusicSource.volume = 0.22f;
+            menuMusicSource.volume = 0.44f;
             menuMusicSource.mute = !WarfestAudio.MusicEnabled;
             if (!menuMusicSource.isPlaying)
             {

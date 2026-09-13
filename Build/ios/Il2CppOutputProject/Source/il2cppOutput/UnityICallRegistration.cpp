@@ -4138,6 +4138,10 @@ void RegisterAllStrippedInternalCalls()
 		void Register_UnityEngine_QualitySettings_get_meshLodThreshold();
 		Register_UnityEngine_QualitySettings_get_meshLodThreshold();
 
+		//System.Void UnityEngine.QualitySettings::set_anisotropicFiltering(UnityEngine.AnisotropicFiltering)
+		void Register_UnityEngine_QualitySettings_set_anisotropicFiltering();
+		Register_UnityEngine_QualitySettings_set_anisotropicFiltering();
+
 		//System.Void UnityEngine.QualitySettings::set_antiAliasing(System.Int32)
 		void Register_UnityEngine_QualitySettings_set_antiAliasing();
 		Register_UnityEngine_QualitySettings_set_antiAliasing();
