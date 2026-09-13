@@ -26,8 +26,6 @@
     <string>1.0.0</string>
     <key>CFBundleVersion</key>
     <string>0</string>
-    <key>ITSAppUsesNonExemptEncryption</key>
-    <false />
     <key>LSRequiresIPhoneOS</key>
     <true />
     <key>UIApplicationSceneManifest</key>
@@ -74,14 +72,14 @@
     <array>
       <string>UIInterfaceOrientationPortrait</string>
     </array>
-    <key>UISupportedInterfaceOrientations~ipad</key>
-    <array>
-      <string>UIInterfaceOrientationPortrait</string>
-      <string>UIInterfaceOrientationPortraitUpsideDown</string>
-    </array>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <true />
     <key>Unity_LoadingActivityIndicatorStyle</key>
     <integer>-1</integer>
+      <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+      <string>UIInterfaceOrientationPortrait</string>
+      <string>UIInterfaceOrientationPortraitUpsideDown</string>
+    </array>
   </dict>
 </plist>

@@ -19,13 +19,18 @@ public static partial class WarfestLevelCatalog
     // ---- Canonical gameplay variants (index order MUST match WarfestGameController prefab load) --
     public const int BOX = 0;        // light structural brick
     public const int BOX2 = 1;       // heavy structural brick (stable base)
-    public const int BOX3 = 2;       // slim corner turret / wedge
+    public const int SANDBAG = 2;    // sandbag barrier
+    public const int BOX3 = SANDBAG; // backwards-compatible alias
     public const int LONG_BOX = 3;   // chunky beam / lintel
     public const int LONG_BOX2 = 4;  // flat plank / roof cap
     public const int SOLDIER = 5;    // objective topper
-    public const int CANNISTER = 6;  // barrel prop (NOT explosive)
+    public const int CAN = 6;        // ration can prop (NOT explosive)
+    public const int CANNISTER = CAN;// backwards-compatible alias
     public const int BOMB = 7;       // explosive chain target
     public const int KING = 8;       // royal milestone crown piece
+    public const int TANK = 9;       // armored combat tank unit facing forward
+    public const int TURTLE = 10;    // armored turtle combat unit facing forward
+    public const int BOX4 = 11;      // skull crate / heavy box block facing forward
 
     public static bool IsBombVariant(int variant) => variant == BOMB;
 
@@ -42,110 +47,110 @@ public static partial class WarfestLevelCatalog
     private const float TwinFrontYaw = 16f;
     private const float TwinRearYaw = -16f;
 
-    // [box, box2, box3, long_box, long_box2, soldier, cannister, bomb, king] for levels 1..100.
+    // [box, box2, box3, long_box, long_box2, soldier, cannister, bomb, king, tank] for levels 1..100.
     // Transcribed verbatim from the master brief; every row's sum is the level's block budget.
     private static readonly int[][] CampaignComposition =
     {
-        new[]{10,4,0,3,0,3,0,0,0}, // 01 Training Gatehouse
-        new[]{13,3,0,2,0,3,0,0,0}, // 02 Twin Sentries
-        new[]{14,3,0,2,0,3,0,0,0}, // 03 Supply Arch
-        new[]{11,3,2,3,0,4,0,0,0}, // 04 Pillar Drill
-        new[]{11,4,2,2,0,3,2,0,0}, // 05 Barricade Stack
-        new[]{13,3,2,2,0,3,2,0,0}, // 06 Double Arch
-        new[]{11,3,3,3,1,3,2,0,0}, // 07 Beam Nest
-        new[]{12,3,2,2,1,4,3,0,0}, // 08 Barracks Stack
-        new[]{12,4,2,2,1,3,2,2,0}, // 09 Fuse Lesson
-        new[]{12,3,2,3,2,3,2,1,1}, // 10 Royal Outpost
-        new[]{12,3,2,2,1,3,2,1,0}, // 11 Watchtower Row
-        new[]{9,3,3,2,1,4,3,2,0},  // 12 Hollow Bunker
-        new[]{12,4,2,3,1,3,2,1,0}, // 13 H-Bridge
-        new[]{15,3,2,2,1,3,2,1,0}, // 14 Offset Keep
-        new[]{14,3,2,2,2,3,2,2,0}, // 15 Ammunition Alley
-        new[]{14,3,2,3,1,4,3,1,0}, // 16 Guarded Vault
-        new[]{16,4,3,2,1,3,2,1,0}, // 17 Zigzag Wall
-        new[]{11,3,2,2,1,3,2,2,0}, // 18 Layered Balcony
-        new[]{12,3,2,3,1,3,2,1,0}, // 19 Bomb Pocket
-        new[]{10,3,2,2,2,4,3,1,1}, // 20 Royal Fortress
-        new[]{9,5,2,3,2,4,2,3,0},  // 21 Split Checkpoint
-        new[]{10,4,3,4,2,4,2,2,0}, // 22 Twin Depots
-        new[]{13,4,2,3,2,4,2,2,0}, // 23 Two Bridges
-        new[]{11,4,2,3,2,5,3,3,0}, // 24 Crossfire Posts
-        new[]{12,5,2,4,3,4,2,2,0}, // 25 Canyon Gate
-        new[]{16,4,2,3,2,4,2,2,0}, // 26 Split Bunkers
-        new[]{15,4,3,3,2,4,2,3,0}, // 27 Relay Towers
-        new[]{8,4,2,4,2,5,3,2,0},  // 28 Offset Barracks
-        new[]{11,5,2,3,2,4,2,2,0}, // 29 Chain-Reaction Twins
-        new[]{10,4,2,3,3,4,2,3,1}, // 30 Royal Twin Keep
-        new[]{10,4,3,4,2,4,3,2,0}, // 31 High-Low Towers
-        new[]{9,4,4,3,2,5,4,2,0},  // 32 Center Gap
-        new[]{11,5,3,3,2,4,3,3,0}, // 33 X-Brace Fort
-        new[]{13,4,3,4,2,4,3,2,0}, // 34 Double Staircase
-        new[]{14,4,3,3,3,4,3,2,0}, // 35 Balanced Barracks
-        new[]{13,4,3,3,2,5,4,3,0}, // 36 Canister Vaults
-        new[]{14,5,4,4,2,4,3,2,0}, // 37 Bomb Wells
-        new[]{18,4,3,3,2,4,3,2,0}, // 38 Guard Galleries
-        new[]{10,4,3,3,2,4,3,3,0}, // 39 Funnel Forts
-        new[]{7,4,3,4,3,5,4,2,1},  // 40 Royal Bridge
-        new[]{8,6,3,4,3,5,3,3,0},  // 41 Fortress Wings
-        new[]{8,5,4,4,3,5,3,4,0},  // 42 Double Citadel
-        new[]{10,5,3,5,3,5,3,3,0}, // 43 Three-Post Trial
-        new[]{10,5,3,4,3,6,4,3,0}, // 44 Staggered Supply Line
-        new[]{10,6,3,4,4,5,3,4,0}, // 45 Tri-Tower Camp
-        new[]{13,5,3,5,3,5,3,3,0}, // 46 Bomb Triangle
-        new[]{14,5,4,4,3,5,3,3,0}, // 47 Long-Beam Citadel
-        new[]{13,5,3,4,3,6,4,4,0}, // 48 Soldier Gallery
-        new[]{7,6,3,5,3,5,3,3,0},  // 49 Triple Gate
-        new[]{8,5,3,4,4,5,3,3,1},  // 50 Royal Command Camp
-        new[]{11,5,3,4,3,5,3,4,0}, // 51 Frontline Arc
-        new[]{9,5,4,5,3,6,4,3,0},  // 52 Three Bunkers
-        new[]{13,6,3,4,3,5,3,3,0}, // 53 Central Bomb Spine
-        new[]{14,5,3,4,3,5,3,4,0}, // 54 Bridge and Wings
-        new[]{14,5,3,5,4,5,3,3,0}, // 55 Canister Columns
-        new[]{14,5,3,4,3,6,4,3,1}, // 56 Stepped Defense
-        new[]{15,6,4,4,3,5,3,4,0}, // 57 Ring of Guards
-        new[]{18,5,3,5,3,5,3,3,0}, // 58 Tower Canyon
-        new[]{12,5,3,4,3,5,3,3,0}, // 59 Cascade Wall
-        new[]{8,5,3,4,4,6,4,4,1},  // 60 Royal Triangle
-        new[]{6,6,4,6,4,6,4,4,0},  // 61 Heavy Fort Line
-        new[]{7,6,5,5,4,6,4,4,0},  // 62 Bomb Funnel
-        new[]{8,6,4,5,4,6,4,5,0},  // 63 Split Roof Camp
-        new[]{7,6,4,6,4,7,5,4,0},  // 64 Double Bomb Chambers
-        new[]{9,7,4,5,5,6,4,4,0},  // 65 Layer-Cake Fort
-        new[]{11,6,4,5,4,6,4,5,0}, // 66 Soldier Balcony
-        new[]{11,6,5,6,4,6,4,4,0}, // 67 Alternating Pillars
-        new[]{12,6,4,5,4,7,5,4,0}, // 68 Canister Gauntlet
-        new[]{13,7,4,5,4,6,4,5,0}, // 69 Chain-Reaction Castle
-        new[]{6,5,3,6,5,6,4,4,1},  // 70 Royal Siege Line
-        new[]{9,6,4,5,4,6,4,4,0},  // 71 Four Corners
-        new[]{6,6,5,5,4,7,5,5,0},  // 72 Diamond Camp
-        new[]{8,7,4,6,4,6,4,4,1},  // 73 Zigzag Batteries
-        new[]{12,6,4,5,4,6,4,4,0}, // 74 Four Watchtowers
-        new[]{11,6,4,5,5,6,4,5,0}, // 75 Cross Formation
-        new[]{11,6,4,6,4,7,5,4,0}, // 76 Twin Front Twin Rear
-        new[]{13,7,5,5,4,6,4,4,0}, // 77 Outer Ring
-        new[]{15,6,4,5,4,6,4,5,0}, // 78 Bomb Chessboard
-        new[]{16,6,4,6,4,6,4,4,0}, // 79 Tall-Short Rhythm
-        new[]{6,5,4,5,5,7,5,4,1},  // 80 Royal Square
-        new[]{6,7,4,6,5,7,4,5,0},  // 81 Fortress Quadrants
-        new[]{6,7,5,6,5,7,4,5,0},  // 82 Four-Bridge Run
-        new[]{8,7,4,6,5,7,4,5,0},  // 83 Command Diamond
-        new[]{6,7,4,6,5,8,5,5,1},  // 84 Bomb Moat
-        new[]{10,7,4,6,5,7,4,5,0}, // 85 Canister Compass
-        new[]{11,7,4,6,5,7,4,5,0}, // 86 High-Low Diamond
-        new[]{11,7,5,6,5,7,4,5,0}, // 87 Four Bunkers
-        new[]{11,7,4,6,5,8,5,5,0}, // 88 Spiral Rise
-        new[]{14,7,4,6,5,7,4,5,0}, // 89 Chain-Reaction Quadrants
-        new[]{14,7,4,6,5,7,4,5,1}, // 90 Royal Citadel
-        new[]{7,7,5,6,5,7,5,5,1},  // 91 Grand Parade
-        new[]{6,7,6,6,5,8,6,5,0},  // 92 Twin Front Bastions
-        new[]{10,7,5,6,5,7,5,5,0}, // 93 Command Staircase
-        new[]{10,7,5,6,5,7,5,5,1}, // 94 Crown Labyrinth
-        new[]{12,7,5,6,5,7,5,5,0}, // 95 Explosive Stairway
-        new[]{11,7,5,6,5,8,6,5,0}, // 96 Command Grid
-        new[]{12,7,6,6,5,7,5,5,1}, // 97 Royal Gauntlet
-        new[]{14,7,5,6,5,7,5,5,1}, // 98 Last Barricade
-        new[]{15,7,5,6,5,7,5,5,1}, // 99 Siege Cathedral
-        new[]{14,7,5,6,5,8,6,5,1}, // 100 Grand King's Fortress
+        new[]{10,4,0,3,0,3,0,0,0,0,0,0}, // 01 Training Gatehouse
+        new[]{13,3,0,2,0,3,0,0,0,0,0,0}, // 02 Twin Sentries
+        new[]{14,3,0,2,0,3,0,0,0,0,0,0}, // 03 Supply Arch
+        new[]{11,3,2,3,0,4,0,0,0,0,0,0}, // 04 Pillar Drill
+        new[]{11,4,2,2,0,3,2,0,0,0,0,0}, // 05 Barricade Stack
+        new[]{13,3,2,2,0,3,2,0,0,0,0,0}, // 06 Double Arch
+        new[]{11,3,3,3,1,3,2,0,0,0,0,0}, // 07 Beam Nest
+        new[]{12,3,2,2,1,4,3,0,0,0,0,0}, // 08 Barracks Stack
+        new[]{12,4,2,2,1,3,2,2,0,0,0,0}, // 09 Fuse Lesson
+        new[]{12,3,2,3,2,3,2,1,1,0,0,0}, // 10 Royal Outpost
+        new[]{12,3,2,2,1,3,2,1,0,0,0,0}, // 11 Watchtower Row
+        new[]{9,3,3,2,1,4,3,2,0,0,0,0}, // 12 Hollow Bunker
+        new[]{12,4,2,3,1,3,2,1,0,0,0,0}, // 13 H-Bridge
+        new[]{15,3,2,2,1,3,2,1,0,0,0,0}, // 14 Offset Keep
+        new[]{14,3,2,2,2,3,2,2,0,0,0,0}, // 15 Ammunition Alley
+        new[]{14,3,2,3,1,4,3,1,0,0,0,0}, // 16 Guarded Vault
+        new[]{16,4,3,2,1,3,2,1,0,0,0,0}, // 17 Zigzag Wall
+        new[]{11,3,2,2,1,3,2,2,0,0,0,0}, // 18 Layered Balcony
+        new[]{12,3,2,3,1,3,2,1,0,0,0,0}, // 19 Bomb Pocket
+        new[]{8,3,2,2,2,4,3,1,1,2,0,2}, // 20 Royal Fortress
+        new[]{5,5,2,3,2,4,2,3,0,0,2,2}, // 21 Split Checkpoint
+        new[]{8,4,3,4,2,4,2,2,0,2,2,0}, // 22 Twin Depots
+        new[]{9,4,2,3,2,4,2,2,0,0,2,2}, // 23 Two Bridges
+        new[]{9,4,2,3,2,5,3,3,0,2,2,2}, // 24 Crossfire Posts
+        new[]{8,5,2,4,3,4,2,2,0,0,2,2}, // 25 Canyon Gate
+        new[]{14,4,2,3,2,4,2,2,0,2,0,2}, // 26 Split Bunkers
+        new[]{11,4,3,3,2,4,2,3,0,0,2,2}, // 27 Relay Towers
+        new[]{8,4,2,4,2,5,3,2,0,2,2,0}, // 28 Offset Barracks
+        new[]{7,5,2,3,2,4,2,2,0,0,2,2}, // 29 Chain-Reaction Twins
+        new[]{6,4,2,3,3,4,2,3,1,2,2,2}, // 30 Royal Twin Keep
+        new[]{6,4,3,4,2,4,3,2,0,0,2,2}, // 31 High-Low Towers
+        new[]{7,4,4,3,2,5,4,2,0,2,0,2}, // 32 Center Gap
+        new[]{7,5,3,3,2,4,3,3,0,0,2,2}, // 33 X-Brace Fort
+        new[]{9,4,3,4,2,4,3,2,0,0,2,2}, // 34 Double Staircase
+        new[]{14,4,3,3,3,4,3,2,0,2,2,0}, // 35 Balanced Barracks
+        new[]{9,4,3,3,2,5,4,3,0,0,2,2}, // 36 Canister Vaults
+        new[]{10,5,4,4,2,4,3,2,0,0,2,2}, // 37 Bomb Wells
+        new[]{16,4,3,3,2,4,3,2,0,2,0,2}, // 38 Guard Galleries
+        new[]{6,4,3,3,2,4,3,3,0,0,2,2}, // 39 Funnel Forts
+        new[]{3,4,3,4,3,5,4,2,1,0,2,2}, // 40 Royal Bridge
+        new[]{8,6,3,4,3,5,3,3,0,2,2,0}, // 41 Fortress Wings
+        new[]{4,5,4,4,3,5,3,4,0,0,2,2}, // 42 Double Citadel
+        new[]{6,5,3,5,3,5,3,3,0,0,2,2}, // 43 Three-Post Trial
+        new[]{8,5,3,4,3,6,4,3,0,2,0,2}, // 44 Staggered Supply Line
+        new[]{6,6,3,4,4,5,3,4,0,0,2,2}, // 45 Tri-Tower Camp
+        new[]{9,5,3,5,3,5,3,3,0,0,2,2}, // 46 Bomb Triangle
+        new[]{14,5,4,4,3,5,3,3,0,2,2,0}, // 47 Long-Beam Citadel
+        new[]{9,5,3,4,3,6,4,4,0,0,2,2}, // 48 Soldier Gallery
+        new[]{3,6,3,5,3,5,3,3,0,0,2,2}, // 49 Triple Gate
+        new[]{6,5,3,4,4,5,3,3,1,2,2,2}, // 50 Royal Command Camp
+        new[]{10,5,3,4,3,4,3,4,0,0,0,2}, // 51 Frontline Arc
+        new[]{10,4,4,5,3,4,4,3,0,2,0,0}, // 52 Three Bunkers
+        new[]{12,6,3,4,3,4,3,3,0,0,2,0}, // 53 Central Bomb Spine
+        new[]{11,5,3,4,3,4,3,4,0,2,0,2}, // 54 Bridge and Wings
+        new[]{11,5,3,5,4,4,3,3,0,0,2,2}, // 55 Canister Columns
+        new[]{10,5,3,4,3,4,4,3,1,2,2,2}, // 56 Stepped Defense
+        new[]{14,6,4,4,3,4,3,4,0,0,0,2}, // 57 Ring of Guards
+        new[]{15,7,3,5,3,4,3,3,0,2,0,0}, // 58 Tower Canyon
+        new[]{11,5,3,4,3,4,3,3,0,0,2,0}, // 59 Cascade Wall
+        new[]{5,4,3,4,4,4,4,4,1,2,2,2}, // 60 Royal Triangle
+        new[]{6,4,4,6,4,4,4,4,0,0,2,2}, // 61 Heavy Fort Line
+        new[]{7,4,5,5,4,4,4,4,0,2,2,0}, // 62 Bomb Funnel
+        new[]{10,4,4,5,4,4,4,5,0,0,0,2}, // 63 Split Roof Camp
+        new[]{10,4,4,6,4,4,5,4,0,2,0,0}, // 64 Double Bomb Chambers
+        new[]{11,5,4,5,5,4,4,4,0,0,2,0}, // 65 Layer-Cake Fort
+        new[]{10,5,4,5,4,4,4,5,0,2,0,2}, // 66 Soldier Balcony
+        new[]{10,5,5,6,4,4,4,4,0,0,2,2}, // 67 Alternating Pillars
+        new[]{12,5,4,5,4,4,5,4,0,2,2,0}, // 68 Canister Gauntlet
+        new[]{14,6,4,5,4,4,4,5,0,0,0,2}, // 69 Chain-Reaction Castle
+        new[]{3,4,3,6,5,4,4,4,1,2,2,2}, // 70 Royal Siege Line
+        new[]{10,5,4,5,4,4,4,4,0,0,2,0}, // 71 Four Corners
+        new[]{7,4,5,5,4,4,5,5,0,2,0,2}, // 72 Diamond Camp
+        new[]{7,4,4,6,4,4,4,4,1,2,2,2}, // 73 Zigzag Batteries
+        new[]{11,5,4,5,4,4,4,4,0,2,2,0}, // 74 Four Watchtowers
+        new[]{12,5,4,5,5,4,4,5,0,0,0,2}, // 75 Cross Formation
+        new[]{12,6,4,6,4,4,5,4,0,2,0,0}, // 76 Twin Front Twin Rear
+        new[]{14,6,5,5,4,4,4,4,0,0,2,0}, // 77 Outer Ring
+        new[]{13,6,4,5,4,4,4,5,0,2,0,2}, // 78 Bomb Chessboard
+        new[]{14,6,4,6,4,4,4,4,0,0,2,2}, // 79 Tall-Short Rhythm
+        new[]{4,4,4,5,5,4,5,4,1,2,2,2}, // 80 Royal Square
+        new[]{10,4,4,6,5,4,4,5,0,0,0,2}, // 81 Fortress Quadrants
+        new[]{10,4,5,6,5,4,4,5,0,2,0,0}, // 82 Four-Bridge Run
+        new[]{11,5,4,6,5,4,4,5,0,0,2,0}, // 83 Command Diamond
+        new[]{7,4,4,6,5,4,5,5,1,2,2,2}, // 84 Bomb Moat
+        new[]{11,5,4,6,5,4,4,5,0,0,2,2}, // 85 Canister Compass
+        new[]{12,5,4,6,5,4,4,5,0,2,2,0}, // 86 High-Low Diamond
+        new[]{13,6,5,6,5,4,4,5,0,0,0,2}, // 87 Four Bunkers
+        new[]{14,6,4,6,5,4,5,5,0,2,0,0}, // 88 Spiral Rise
+        new[]{15,7,4,6,5,4,4,5,0,0,2,0}, // 89 Chain-Reaction Quadrants
+        new[]{12,6,4,6,5,4,4,5,1,2,2,2}, // 90 Royal Citadel
+        new[]{7,4,5,6,5,4,5,5,1,2,2,2}, // 91 Grand Parade
+        new[]{9,4,6,6,5,4,6,5,0,2,2,0}, // 92 Twin Front Bastions
+        new[]{12,6,5,6,5,4,5,5,0,0,0,2}, // 93 Command Staircase
+        new[]{10,4,5,6,5,4,5,5,1,2,2,2}, // 94 Crown Labyrinth
+        new[]{14,6,5,6,5,4,5,5,0,0,2,0}, // 95 Explosive Stairway
+        new[]{12,6,5,6,5,4,6,5,0,2,0,2}, // 96 Command Grid
+        new[]{11,5,6,6,5,4,5,5,1,2,2,2}, // 97 Royal Gauntlet
+        new[]{12,6,5,6,5,4,5,5,1,2,2,2}, // 98 Last Barricade
+        new[]{13,6,5,6,5,4,5,5,1,2,2,2}, // 99 Siege Cathedral
+        new[]{13,6,5,6,5,4,6,5,1,2,2,2}, // 100 Grand King's Fortress
     };
 
     private static readonly HashSet<int> ThreeTableLevels = new HashSet<int>
@@ -238,9 +243,9 @@ public static int[] CampaignCompositionFor(int zeroBasedLevel)
 
         // Levels 1-3 are deliberately small, reference-driven tutorial layouts. Their inventories
         // are exact rather than expanded so the construction never receives unrelated pieces.
-        if (level == 0) return new[] { 0, 0, 0, 0, 0, 1, 18, 0, 0 };
-        if (level == 1) return new[] { 0, 0, 0, 0, 0, 1, 20, 0, 0 };
-        if (level == 2) return new[] { 9, 0, 0, 0, 9, 0, 0, 0, 0 };
+        if (level == 0) return new[] { 0, 0, 0, 0, 0, 1, 18, 0, 0, 0, 0, 0 };
+        if (level == 1) return new[] { 0, 0, 0, 0, 0, 1, 20, 0, 0, 0, 0, 0 };
+        if (level == 2) return new[] { 4, 4, 4, 2, 0, 2, 2, 0, 0, 0, 0, 0 };
 
         int[] expanded = (int[])CampaignComposition[level].Clone();
         int lv = level + 1;
@@ -267,14 +272,14 @@ public static int[] CampaignCompositionFor(int zeroBasedLevel)
             expanded[BOX] += 4;
             expanded[BOX2] += 2;
             expanded[LONG_BOX] += 2;
-            expanded[SOLDIER] += 2;
+            expanded[SANDBAG] += 2;
         }
         else
         {
             expanded[BOX] += 4;
             expanded[BOX2] += 4;
             expanded[LONG_BOX] += 2;
-            expanded[SOLDIER] += 2;
+            expanded[BOX4] += 2;
             expanded[CANNISTER] += 2;
         }
 
@@ -283,7 +288,7 @@ public static int[] CampaignCompositionFor(int zeroBasedLevel)
             expanded[BOX] += 4;
             expanded[BOX2] += 2;
             expanded[LONG_BOX2] += 2;
-            expanded[SOLDIER] += 2;
+            expanded[SANDBAG] += 2;
             if (UsesTwinTableFormat(level))
             {
                 for (int i = 0; i < expanded.Length; i++)
@@ -429,11 +434,14 @@ public static int[] CampaignCompositionFor(int zeroBasedLevel)
         {
             case LONG_BOX: return 0.34f;
             case LONG_BOX2: return 0.24f;
-            case SOLDIER: return 0.62f;
-            case BOX3: return 0.58f;
+            case SOLDIER: return 0.806f; // scaled 1.3x (0.62 * 1.3)
+            case SANDBAG: return 0.50f;
             case KING: return 0.90f;
             case CANNISTER:
             case BOMB: return 0.56f;
+            case TANK: return 0.65f;
+            case TURTLE: return 0.675f; // scaled 1.5x (0.45 * 1.5)
+            case BOX4: return 0.50f;
             default: return CampaignCell;
         }
     }
@@ -489,7 +497,7 @@ private static void BuildRequestedOpeningLayout(int level, List<ModelBlockSpec> 
                     }
                 }
             }
-            AddModel(blocks, 0f, 3f * CannisterHeight, SOLDIER, 0.44f, 0.62f, 0, 0);
+            AddModel(blocks, 0f, 3f * CannisterHeight, SOLDIER, 0.572f, 0.806f, 0, 0);
             return;
         }
 
@@ -507,27 +515,38 @@ private static void BuildRequestedOpeningLayout(int level, List<ModelBlockSpec> 
                         CANNISTER, CannisterWidth, CannisterHeight, 0, 0);
                 }
             }
-            AddModel(blocks, 0f, 5f * CannisterHeight, SOLDIER, 0.44f, 0.62f, 0, 0);
+            AddModel(blocks, 0f, 5f * CannisterHeight, SOLDIER, 0.572f, 0.806f, 0, 0);
             return;
         }
 
-        // Level 3: a three-course green-box lattice. Every horizontal rail is long_box2,
-        // matching the attached reference while retaining a small, readable starter footprint.
-        const float GreenBoxSize = 0.60f;
-        const float RailWidth = 1.08f;
-        const float RailHeight = 0.24f;
-        const float PanelPitch = 1.12f;
-        const float CoursePitch = 0.84f;
-        for (int course = 0; course < 3; course++)
-        {
-            float railY = course * CoursePitch;
-            for (int panel = -1; panel <= 1; panel++)
-            {
-                float x = panel * PanelPitch;
-                AddModel(blocks, x, railY, LONG_BOX2, RailWidth, RailHeight, 0, 0);
-                AddModel(blocks, x, railY + RailHeight, BOX, GreenBoxSize, GreenBoxSize, 0, 0);
-            }
-        }
+        // Level 3: Fortified Supply Arch with twin guard towers and stationed sentries (18 blocks).
+        float lx = -1.10f;
+        float rx = 1.10f;
+        // Left & Right foundation pillars (4 BOX2)
+        AddModel(blocks, lx, 0f, BOX2, 0.54f, 0.54f, 0, 0);
+        AddModel(blocks, lx, 0.54f, BOX2, 0.54f, 0.54f, 0, 0);
+        AddModel(blocks, rx, 0f, BOX2, 0.54f, 0.54f, 0, 0);
+        AddModel(blocks, rx, 0.54f, BOX2, 0.54f, 0.54f, 0, 0);
+        // Center arch base (4 BOX)
+        AddModel(blocks, -0.30f, 0f, BOX, 0.54f, 0.54f, 0, 0);
+        AddModel(blocks, 0.30f, 0f, BOX, 0.54f, 0.54f, 0, 0);
+        AddModel(blocks, -0.30f, 0.54f, BOX, 0.54f, 0.54f, 0, 0);
+        AddModel(blocks, 0.30f, 0.54f, BOX, 0.54f, 0.54f, 0, 0);
+        // Arch lintel beams (2 LONG_BOX)
+        AddModel(blocks, 0f, 1.08f, LONG_BOX, 2.50f, 0.28f, 0, 0);
+        AddModel(blocks, 0f, 1.36f, LONG_BOX, 1.70f, 0.28f, 0, 0);
+        // Sandbag breastworks (4 SANDBAG)
+        AddModel(blocks, lx, 1.36f, SANDBAG, 0.52f, 0.45f, 0, 0);
+        AddModel(blocks, rx, 1.36f, SANDBAG, 0.52f, 0.45f, 0, 0);
+        AddModel(blocks, -0.35f, 1.64f, SANDBAG, 0.50f, 0.45f, 0, 0);
+        AddModel(blocks, 0.35f, 1.64f, SANDBAG, 0.50f, 0.45f, 0, 0);
+        // Tower ammo barrels (2 CANNISTER)
+        AddModel(blocks, lx, 1.81f, CANNISTER, 0.44f, 0.56f, 0, 0);
+        AddModel(blocks, rx, 1.81f, CANNISTER, 0.44f, 0.56f, 0, 0);
+        // Stationed sentries (2 SOLDIER)
+        AddModel(blocks, lx, 2.37f, SOLDIER, 0.572f, 0.806f, 0, 0);
+        AddModel(blocks, rx, 2.37f, SOLDIER, 0.572f, 0.806f, 0, 0);
+        return;
     }
 
 
@@ -845,7 +864,7 @@ private static void ComputeCampaign(int level, List<ModelBlockSpec> blocks, List
             level, 2, ref centreCursor, pairCursor);
         PlaceSymmetricTopPieces(b, tableIndex, BOMB, inv[BOMB], 0.50f, 0.56f,
             level, 3, ref centreCursor, pairCursor);
-        PlaceSymmetricTopPieces(b, tableIndex, SOLDIER, inv[SOLDIER], 0.44f, 0.62f,
+        PlaceSymmetricTopPieces(b, tableIndex, SOLDIER, inv[SOLDIER], 0.572f, 0.806f,
             level, 4, ref centreCursor, pairCursor);
         PlaceSymmetricTopPieces(b, tableIndex, KING, inv[KING], 0.74f, 0.90f,
             level, 5, ref centreCursor, pairCursor);
@@ -942,9 +961,12 @@ private static void ComputeCampaign(int level, List<ModelBlockSpec> blocks, List
     {
         const float CELL = CampaignCell;
 
-        int box = inv[BOX], box2 = inv[BOX2], box3 = inv[BOX3];
+        int box = inv[BOX], box2 = inv[BOX2], sandbag = inv[SANDBAG];
         int lbox = inv[LONG_BOX], lbox2 = inv[LONG_BOX2];
         int sol = inv[SOLDIER], can = inv[CANNISTER], bomb = inv[BOMB], king = inv[KING];
+        int tank = inv.Length > TANK ? inv[TANK] : 0;
+        int turtle = inv.Length > TURTLE ? inv[TURTLE] : 0;
+        int box4 = inv.Length > BOX4 ? inv[BOX4] : 0;
 
         int bodyCubes = box + box2;
         int totalPieces = 0;
@@ -1022,20 +1044,42 @@ private static void ComputeCampaign(int level, List<ModelBlockSpec> blocks, List
         }
 
         // Symmetric toppers
-        PlaceSymmetricCrateType(b, tableIndex, BOX3, box3, 0.42f, 0.58f, C, cx, cursor, 0);
-        PlaceSymmetricCrateType(b, tableIndex, CANNISTER, can, 0.44f, 0.56f, C, cx, cursor, 1);
-        PlaceSymmetricCrateType(b, tableIndex, BOMB, bomb, 0.50f, 0.56f, C, cx, cursor, 2);
-        PlaceSymmetricCrateType(b, tableIndex, SOLDIER, sol, 0.44f, 0.62f, C, cx, cursor, 3);
+        bool[] colHasBomb = new bool[C];
+        bool[] colHasUnit = new bool[C];
+        int[] colSoldierCount = new int[C];
+
+        // 1. Structural toppers (SANDBAG, BOX4, CANNISTER)
+        // These provide battlements and parapets. Soldiers and units CAN stand on them.
+        PlaceSymmetricStructuralTopper(b, tableIndex, SANDBAG, sandbag, 0.52f, 0.50f, C, cx, cursor, 0);
+        PlaceSymmetricStructuralTopper(b, tableIndex, BOX4, box4, 0.55f, 0.50f, C, cx, cursor, 1);
+        PlaceSymmetricStructuralTopper(b, tableIndex, CANNISTER, can, 0.44f, 0.56f, C, cx, cursor, 2);
+
+        // 2. King (Apex Royal)
         if (king > 0)
         {
             int mid = C / 2;
             float kRoof = cursor[mid];
             AddModel(b, (C % 2 == 1) ? cx[mid] : 0f, kRoof, KING, 0.74f, 0.90f, 0, tableIndex);
             cursor[mid] += 0.90f;
+            colHasUnit[mid] = true;
+            if (C % 2 == 0 && mid > 0) colHasUnit[mid - 1] = true;
         }
+
+        // 3. Heavy Armor Units (TANK, TURTLE)
+        // Wide ground units. Sits on flat surface, nothing stacks on them.
+        PlaceSymmetricHeavyCombatant(b, tableIndex, TANK, tank, 0.82f, 0.65f, C, cx, cursor, colHasBomb, colHasUnit, 1);
+        PlaceSymmetricHeavyCombatant(b, tableIndex, TURTLE, turtle, 0.84f, 0.675f, C, cx, cursor, colHasBomb, colHasUnit, 2);
+
+        // 4. Munitions (BOMB)
+        // Round explosive spheres. NEVER place anything on top of a bomb!
+        PlaceSymmetricMunitions(b, tableIndex, BOMB, bomb, 0.50f, 0.56f, C, cx, cursor, colHasBomb, colHasUnit);
+
+        // 5. Infantry Sentries (SOLDIER)
+        // Sentries standing on flat battlements. NEVER on a bomb, NEVER on another soldier!
+        PlaceSymmetricInfantry(b, tableIndex, SOLDIER, sol, 0.572f, 0.806f, C, cx, cursor, colHasBomb, colHasUnit, colSoldierCount, slot);
     }
 
-    private static void PlaceSymmetricCrateType(List<ModelBlockSpec> b, int tableIndex, int variant,
+    private static void PlaceSymmetricStructuralTopper(List<ModelBlockSpec> b, int tableIndex, int variant,
         int count, float width, float height, int C, float[] cx, float[] cursor, int priority)
     {
         if (count <= 0) return;
@@ -1059,6 +1103,242 @@ private static void ComputeCampaign(int level, List<ModelBlockSpec> blocks, List
             AddModel(b, cx[mirrorCol], y, variant, width, height, 0, tableIndex);
             cursor[col] = y + height;
             cursor[mirrorCol] = y + height;
+        }
+    }
+
+    private static void PlaceSymmetricHeavyCombatant(List<ModelBlockSpec> b, int tableIndex, int variant,
+        int count, float width, float height, int C, float[] cx, float[] cursor,
+        bool[] colHasBomb, bool[] colHasUnit, int priority)
+    {
+        if (count <= 0) return;
+
+        if (count % 2 == 1)
+        {
+            int mid = C / 2;
+            if (!colHasUnit[mid] && !colHasBomb[mid])
+            {
+                AddModel(b, (C % 2 == 1) ? cx[mid] : 0f, cursor[mid], variant, width, height, 0, tableIndex);
+                cursor[mid] += height;
+                colHasUnit[mid] = true;
+            }
+            else
+            {
+                int bestCol = -1;
+                float lowest = float.MaxValue;
+                for (int i = 0; i < C; i++)
+                {
+                    if (!colHasUnit[i] && !colHasBomb[i] && cursor[i] < lowest)
+                    {
+                        lowest = cursor[i];
+                        bestCol = i;
+                    }
+                }
+                if (bestCol >= 0)
+                {
+                    AddModel(b, cx[bestCol], cursor[bestCol], variant, width, height, 0, tableIndex);
+                    cursor[bestCol] += height;
+                    colHasUnit[bestCol] = true;
+                }
+                else
+                {
+                    AddModel(b, cx[0] - 0.50f, 0f, variant, width, height, 0, tableIndex);
+                }
+            }
+            count--;
+        }
+
+        int pairs = count / 2;
+        for (int p = 0; p < pairs; p++)
+        {
+            int chosen = -1;
+            for (int offset = 0; offset < C / 2; offset++)
+            {
+                int col = (p + priority + offset) % Mathf.Max(1, C / 2);
+                int mirrorCol = C - 1 - col;
+                if (!colHasUnit[col] && !colHasUnit[mirrorCol] && !colHasBomb[col] && !colHasBomb[mirrorCol])
+                {
+                    chosen = col;
+                    break;
+                }
+            }
+
+            if (chosen >= 0)
+            {
+                int mirrorCol = C - 1 - chosen;
+                float y = Mathf.Max(cursor[chosen], cursor[mirrorCol]);
+                AddModel(b, cx[chosen], y, variant, width, height, 0, tableIndex);
+                AddModel(b, cx[mirrorCol], y, variant, width, height, 0, tableIndex);
+                cursor[chosen] = y + height;
+                cursor[mirrorCol] = y + height;
+                colHasUnit[chosen] = true;
+                colHasUnit[mirrorCol] = true;
+            }
+            else
+            {
+                float leftX = cx[0] - 0.50f * (p + 1);
+                float rightX = cx[C - 1] + 0.50f * (p + 1);
+                AddModel(b, leftX, 0f, variant, width, height, 0, tableIndex);
+                AddModel(b, rightX, 0f, variant, width, height, 0, tableIndex);
+            }
+        }
+    }
+
+    private static void PlaceSymmetricMunitions(List<ModelBlockSpec> b, int tableIndex, int variant,
+        int count, float width, float height, int C, float[] cx, float[] cursor,
+        bool[] colHasBomb, bool[] colHasUnit)
+    {
+        if (count <= 0) return;
+
+        if (count % 2 == 1)
+        {
+            int mid = C / 2;
+            if (!colHasBomb[mid] && !colHasUnit[mid])
+            {
+                AddModel(b, (C % 2 == 1) ? cx[mid] : 0f, cursor[mid], variant, width, height, 0, tableIndex);
+                cursor[mid] += height;
+                colHasBomb[mid] = true;
+            }
+            else
+            {
+                int bestCol = -1;
+                float lowest = float.MaxValue;
+                for (int i = 0; i < C; i++)
+                {
+                    if (!colHasBomb[i] && !colHasUnit[i] && cursor[i] < lowest)
+                    {
+                        lowest = cursor[i];
+                        bestCol = i;
+                    }
+                }
+                if (bestCol >= 0)
+                {
+                    AddModel(b, cx[bestCol], cursor[bestCol], variant, width, height, 0, tableIndex);
+                    cursor[bestCol] += height;
+                    colHasBomb[bestCol] = true;
+                }
+                else
+                {
+                    AddModel(b, cx[0] - 0.45f, 0f, variant, width, height, 0, tableIndex);
+                }
+            }
+            count--;
+        }
+
+        int pairs = count / 2;
+        for (int p = 0; p < pairs; p++)
+        {
+            int chosen = -1;
+            // Prefer inner columns for bombs (protected vault)
+            for (int offset = 0; offset < C / 2; offset++)
+            {
+                int col = (C / 2 - 1 - offset);
+                int mirrorCol = C - 1 - col;
+                if (!colHasBomb[col] && !colHasBomb[mirrorCol] && !colHasUnit[col] && !colHasUnit[mirrorCol])
+                {
+                    chosen = col;
+                    break;
+                }
+            }
+
+            if (chosen >= 0)
+            {
+                int mirrorCol = C - 1 - chosen;
+                float y = Mathf.Max(cursor[chosen], cursor[mirrorCol]);
+                AddModel(b, cx[chosen], y, variant, width, height, 0, tableIndex);
+                AddModel(b, cx[mirrorCol], y, variant, width, height, 0, tableIndex);
+                cursor[chosen] = y + height;
+                cursor[mirrorCol] = y + height;
+                colHasBomb[chosen] = true;
+                colHasBomb[mirrorCol] = true;
+            }
+            else
+            {
+                float leftX = cx[0] - 0.45f * (p + 1);
+                float rightX = cx[C - 1] + 0.45f * (p + 1);
+                AddModel(b, leftX, 0f, variant, width, height, 0, tableIndex);
+                AddModel(b, rightX, 0f, variant, width, height, 0, tableIndex);
+            }
+        }
+    }
+
+    private static void PlaceSymmetricInfantry(List<ModelBlockSpec> b, int tableIndex, int variant,
+        int count, float width, float height, int C, float[] cx, float[] cursor,
+        bool[] colHasBomb, bool[] colHasUnit, int[] colSoldierCount, TableSlot slot)
+    {
+        if (count <= 0) return;
+
+        if (count % 2 == 1)
+        {
+            int mid = C / 2;
+            if (!colHasBomb[mid] && !colHasUnit[mid] && colSoldierCount[mid] == 0)
+            {
+                AddModel(b, (C % 2 == 1) ? cx[mid] : 0f, cursor[mid], variant, width, height, 0, tableIndex);
+                cursor[mid] += height;
+                colSoldierCount[mid]++;
+            }
+            else
+            {
+                int bestCol = -1;
+                for (int i = 0; i < C; i++)
+                {
+                    if (!colHasBomb[i] && !colHasUnit[i] && colSoldierCount[i] == 0)
+                    {
+                        bestCol = i;
+                        break;
+                    }
+                }
+                if (bestCol >= 0)
+                {
+                    AddModel(b, cx[bestCol], cursor[bestCol], variant, width, height, 0, tableIndex);
+                    cursor[bestCol] += height;
+                    colSoldierCount[bestCol]++;
+                }
+                else
+                {
+                    AddModel(b, cx[0] - 0.44f, 0f, variant, width, height, 0, tableIndex);
+                }
+            }
+            count--;
+        }
+
+        int pairs = count / 2;
+        int overflow = 0;
+        for (int p = 0; p < pairs; p++)
+        {
+            int chosen = -1;
+            // Prefer outer bastions first (col = 0), then step inward
+            for (int col = 0; col < C / 2; col++)
+            {
+                int mirrorCol = C - 1 - col;
+                if (!colHasBomb[col] && !colHasBomb[mirrorCol] &&
+                    !colHasUnit[col] && !colHasUnit[mirrorCol] &&
+                    colSoldierCount[col] == 0 && colSoldierCount[mirrorCol] == 0)
+                {
+                    chosen = col;
+                    break;
+                }
+            }
+
+            if (chosen >= 0)
+            {
+                int mirrorCol = C - 1 - chosen;
+                float y = Mathf.Max(cursor[chosen], cursor[mirrorCol]);
+                AddModel(b, cx[chosen], y, variant, width, height, 0, tableIndex);
+                AddModel(b, cx[mirrorCol], y, variant, width, height, 0, tableIndex);
+                cursor[chosen] = y + height;
+                cursor[mirrorCol] = y + height;
+                colSoldierCount[chosen]++;
+                colSoldierCount[mirrorCol]++;
+            }
+            else
+            {
+                // Station on stepped flanking outpost at table level
+                overflow++;
+                float leftX = cx[0] - 0.44f * overflow;
+                float rightX = cx[C - 1] + 0.44f * overflow;
+                AddModel(b, leftX, 0f, variant, width, height, 0, tableIndex);
+                AddModel(b, rightX, 0f, variant, width, height, 0, tableIndex);
+            }
         }
     }
 

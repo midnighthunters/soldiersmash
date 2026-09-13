@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: b28e7c32d5f84e2b90c6d4f12345bcde
+TrueTypeFontImporter:
+  externalObjects: {}
+  serializedVersion: 4
+  fontSize: 16
+  forceToMono: 0
+  characterSpacing: 0
+  characterPadding: 1
+  includeFontData: 1
+  fontNames:
+  - Fredoka
+  fallbackFontReferences: []
+  customBorderColor: {r: 1, g: 1, b: 1, a: 1}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

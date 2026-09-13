@@ -220,7 +220,7 @@ public sealed class WarfestGameController : MonoBehaviour
 
     private void LoadOriginalSprites()
     {
-        if (s_spritesLoaded)
+        if (s_spritesLoaded && s_boxModelMaterials != null && s_boxModelMaterials.Length > 0 && s_boxModelMaterials[0] != null)
         {
             pistolSprite = s_pistolSprite;
             pistolBaseSprite = s_pistolBaseSprite;
@@ -288,13 +288,23 @@ public sealed class WarfestGameController : MonoBehaviour
         if (pistolSprite == null && pistolSprites.Length > 0) pistolSprite = pistolSprites[0];
         if (pistolBaseSprite == null && pistolSprites.Length > 1) pistolBaseSprite = pistolSprites[1];
 
-        string[] modelFolders = { "box", "box2", "box3", "long_box", "long_box2", "soldier", "cannister", "bomb", "king" };
+        string[] modelFolders = { "box", "box2", "sandbag", "long_box", "long_box2", "soldier", "can", "bomb", "king", "tank", "turtle", "box4" };
         boxModelPrefabs = new GameObject[modelFolders.Length];
         boxModelTextures = new Texture2D[modelFolders.Length];
         for (int i = 0; i < modelFolders.Length; i++)
         {
             boxModelPrefabs[i] = Resources.Load<GameObject>(modelFolders[i] + "/base");
             boxModelTextures[i] = Resources.Load<Texture2D>(modelFolders[i] + "/shaded");
+            if (boxModelPrefabs[i] == null && modelFolders[i] == "sandbag")
+            {
+                boxModelPrefabs[i] = Resources.Load<GameObject>("box3/base");
+                boxModelTextures[i] = Resources.Load<Texture2D>("box3/shaded");
+            }
+            if (boxModelPrefabs[i] == null && modelFolders[i] == "can")
+            {
+                boxModelPrefabs[i] = Resources.Load<GameObject>("cannister/base");
+                boxModelTextures[i] = Resources.Load<Texture2D>("cannister/shaded");
+            }
         }
         boxModelMaterials = new Material[boxModelTextures.Length];
         for (int i = 0; i < boxModelTextures.Length; i++)
@@ -338,7 +348,7 @@ public sealed class WarfestGameController : MonoBehaviour
         }
         if (!HasAnyBoxPrefab())
         {
-            Debug.LogError("The 3D levels require the gameplay model set under Resources/{box,box2,box3,long_box,long_box2,soldier,cannister,bomb,king}/base.fbx.");
+            Debug.LogError("The 3D levels require the gameplay model set under Resources/{box,box2,sandbag,long_box,long_box2,soldier,can,bomb,king,tank,turtle,box4}/base.fbx.");
         }
         if (tableModelPrefab == null)
         {
@@ -383,7 +393,7 @@ private bool HasAnyBoxPrefab()
         return null;
     }
 
-private Material CreateBrightModelMaterial(Texture2D texture, string materialName)
+    private Material CreateBrightModelMaterial(Texture2D texture, string materialName)
     {
         if (texture == null) return null;
         Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
@@ -392,6 +402,7 @@ private Material CreateBrightModelMaterial(Texture2D texture, string materialNam
 
         Material material = new Material(shader);
         material.name = materialName;
+        material.hideFlags = HideFlags.DontSave;
         material.mainTexture = texture;
         if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
         Color exposure = new Color(1.45f, 1.45f, 1.45f, 1f);
@@ -404,9 +415,16 @@ private Material CreateBrightModelMaterial(Texture2D texture, string materialNam
     private Material GetBoxMaterial(int variant)
     {
         if (boxModelMaterials == null || boxModelMaterials.Length == 0) return null;
-        if (variant >= 0 && variant < boxModelMaterials.Length && boxModelMaterials[variant] != null)
+        if (variant >= 0 && variant < boxModelMaterials.Length)
         {
-            return boxModelMaterials[variant];
+            if (boxModelMaterials[variant] == null && boxModelTextures != null && variant < boxModelTextures.Length && boxModelTextures[variant] != null)
+            {
+                boxModelMaterials[variant] = CreateBrightModelMaterial(boxModelTextures[variant], "Warfest Block " + (variant + 1));
+            }
+            if (boxModelMaterials[variant] != null)
+            {
+                return boxModelMaterials[variant];
+            }
         }
         for (int i = 0; i < boxModelMaterials.Length; i++)
         {
@@ -417,7 +435,7 @@ private Material CreateBrightModelMaterial(Texture2D texture, string materialNam
 
     // Explicit gameplay weights for the authored 3D pieces. These values are intentionally
     // independent of visual size so long_box and the sandbag block can have matching weight.
-private static float GetModelMass(int variant)
+    private static float GetModelMass(int variant)
     {
         // Every runtime target receives this Rigidbody2D mass. Weights are tuned per gameplay
         // role, independent of visual size. box2 anchors the base, the king is the heavy crown
@@ -426,13 +444,16 @@ private static float GetModelMass(int variant)
         {
             case 0: return 1.20f; // box       : light structural brick
             case 1: return 2.20f; // box2      : heavy structural brick (stable base)
-            case 2: return 1.00f; // box3      : slim turret / wedge
+            case 2: return 1.10f; // sandbag   : sandbag barrier
             case 3: return 1.40f; // long_box  : chunky beam / lintel
             case 4: return 1.10f; // long_box2 : flat plank / roof cap
             case 5: return 0.80f; // soldier   : objective topper
             case 6: return 1.00f; // cannister : barrel (rolls / shifts weight)
             case 7: return 1.05f; // bomb      : explosive target
             case 8: return 5.00f; // king      : important heavyweight crown piece
+            case 9: return 2.80f; // tank      : armored combat tank
+            case 10: return 1.20f; // turtle   : armored helmet turtle
+            case 11: return 1.50f; // box4     : skull crate / heavy box block
             default: return 1.20f;
         }
     }
@@ -747,6 +768,10 @@ private void CreateModelTable(WarfestLevelCatalog.ModelTableSpec spec, int index
         const float surfaceThickness = 0.05f;
 
         GameObject table = Instantiate(tableModelPrefab, worldRoot);
+        if (tableModelMaterial == null)
+        {
+            tableModelMaterial = CreateBrightModelMaterial(Resources.Load<Texture2D>("table/shaded"), "Warfest Table");
+        }
         ApplyModelMaterial(table, tableModelMaterial);
         table.name = "Level Table Model " + (index + 1).ToString("00");
         table.transform.localPosition = Vector3.zero;
@@ -2095,9 +2120,13 @@ public void RegisterTargetBroken(WarfestTarget target)
         musicSource.playOnAwake = false;
         musicSource.loop = true;
         musicSource.spatialBlend = 0f;
-        musicSource.volume = 0.35f;
+        musicSource.volume = 0.22f;
 
-        if (s_shootClip == null) s_shootClip = CreateShootClip();
+        if (s_shootClip == null)
+        {
+            s_shootClip = WarfestAudio.GetShootClip();
+            if (s_shootClip == null) s_shootClip = CreateShootClip();
+        }
         shootClip = s_shootClip;
 
         if (s_blockPopClip == null)
@@ -2126,9 +2155,14 @@ public void RegisterTargetBroken(WarfestTarget target)
 
     private void PlayShootSound()
     {
-        if (soundEnabled && sfxSource != null && shootClip != null)
+        if (shootClip == null)
         {
-            sfxSource.PlayOneShot(shootClip, 0.72f);
+            shootClip = WarfestAudio.GetShootClip();
+            if (shootClip == null) shootClip = CreateShootClip();
+        }
+        if ((soundEnabled || WarfestAudio.SoundEnabled) && sfxSource != null && shootClip != null)
+        {
+            sfxSource.PlayOneShot(shootClip, 0.78f);
         }
     }
 
@@ -2696,6 +2730,19 @@ private void ReleaseModelPhysics()
 
 private void CreateBackground()
     {
+        if (backgroundSprite == null)
+        {
+            Texture2D backgroundTexture = Resources.Load<Texture2D>("background");
+            if (backgroundTexture != null)
+            {
+                backgroundSprite = Sprite.Create(
+                    backgroundTexture,
+                    new Rect(0f, 0f, backgroundTexture.width, backgroundTexture.height),
+                    new Vector2(0.5f, 0.5f),
+                    100f);
+                backgroundSprite.name = "Gameplay Background";
+            }
+        }
         if (backgroundSprite == null || gameplayCamera == null) return;
 
         float worldHeight = gameplayCamera.orthographicSize * 2f;

@@ -118,7 +118,7 @@ public static partial class WarfestLevelCatalog
     private const int ORANGE_X = 2;     // tall orange crate w/ X brace
     private const int STONE = 3;        // 2x2 cream stone cube cluster
     private const int BEAM = 4;         // horizontal orange beam on metal legs
-    private const int SANDBAG = 5;      // sandbag pile
+    private const int SPRITE_SANDBAG = 5; // sandbag pile
     private const int PILLAR = 6;       // narrow tall grey stone pillar
     private const int CANNON = 7;       // grey block with round cannon hole
     private const int METAL = 8;        // grey riveted metal plate crate
@@ -516,7 +516,7 @@ private static void CompactStacks(List<ModelBlockSpec> blocks)
         }
     }
 
-    private static void Soldier(List<ModelBlockSpec> b, float x, int row) => AddModel(b, x, RowY(row), 4, 0.72f, 0.72f);
+    private static void Soldier(List<ModelBlockSpec> b, float x, int row) => AddModel(b, x, RowY(row), 4, 0.936f, 0.936f);
     private static void Cannister(List<ModelBlockSpec> b, float x, int row) => AddModel(b, x, RowY(row), 5, 0.56f, 0.72f);
     private static void Turret(List<ModelBlockSpec> b, float x, int row) => AddModel(b, x, RowY(row), 2, 0.36f, 0.72f);
     private static void Lintel(List<ModelBlockSpec> b, float x, int row, float width) => AddModel(b, x, RowY(row), 3, width, 0.36f);
@@ -1053,7 +1053,7 @@ private static void Level01_FrontRearBlock(List<ModelBlockSpec> b)
                 blocks.Add(new BlockSpec(new Vector2(x, normalCenterY), new Vector2(Cell * 0.92f, Cell * 0.92f), 0f, White, SMALL_ORANGE, false));
                 break;
             case 'D':
-                blocks.Add(new BlockSpec(new Vector2(x, normalCenterY), new Vector2(Cell, Cell), 0f, White, SANDBAG, false));
+                blocks.Add(new BlockSpec(new Vector2(x, normalCenterY), new Vector2(Cell, Cell), 0f, White, SPRITE_SANDBAG, false));
                 break;
             case 'X':
                 blocks.Add(new BlockSpec(new Vector2(x, rowBottom + TallHeight * 0.5f), new Vector2(Cell * 0.72f, TallHeight), 0f, White, ORANGE_X, false));

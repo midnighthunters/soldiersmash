@@ -13,6 +13,7 @@ public static class WarfestAudio
     private static AudioClip levelClip;
     private static AudioClip victoryClip;
     private static AudioClip matchClip;
+    private static AudioClip shootClip;
 
     public static bool SoundEnabled
     {
@@ -70,6 +71,15 @@ public static class WarfestAudio
             matchClip = Resources.Load<AudioClip>("audio/match");
         }
         return matchClip;
+    }
+
+    public static AudioClip GetShootClip()
+    {
+        if (shootClip == null)
+        {
+            shootClip = Resources.Load<AudioClip>("audio/shoot");
+        }
+        return shootClip;
     }
 
     public static bool IsMusicSource(AudioSource source)
