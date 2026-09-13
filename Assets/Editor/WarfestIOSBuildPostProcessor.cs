@@ -62,10 +62,41 @@ namespace Warfest.Editor
 
                 File.WriteAllText(plistPath, content);
                 Debug.Log("[WarfestIOSBuildPostProcessor] Enforced Portrait orientation in Info.plist");
+
+                EnsureAppIcons(pathToBuiltProject);
             }
             catch (Exception ex)
             {
-                Debug.LogError("[WarfestIOSBuildPostProcessor] Error updating Info.plist: " + ex.Message);
+                Debug.LogError("[WarfestIOSBuildPostProcessor] Error updating build: " + ex.Message);
+            }
+        }
+
+        private static void EnsureAppIcons(string pathToBuiltProject)
+        {
+            try
+            {
+                string iconSetDir = Path.Combine(pathToBuiltProject, "Unity-iPhone", "Images.xcassets", "AppIcon.appiconset");
+                if (!Directory.Exists(iconSetDir))
+                {
+                    Directory.CreateDirectory(iconSetDir);
+                }
+
+                string masterIcon = Path.Combine(Application.dataPath, "AppIcon_1024.png");
+                if (!File.Exists(masterIcon))
+                {
+                    masterIcon = Path.Combine(Application.dataPath, "icon.png");
+                }
+
+                if (File.Exists(masterIcon))
+                {
+                    string target1024 = Path.Combine(iconSetDir, "Icon-1024.png");
+                    File.Copy(masterIcon, target1024, true);
+                    Debug.Log("[WarfestIOSBuildPostProcessor] Ensured Icon-1024.png exists in AppIcon.appiconset");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("[WarfestIOSBuildPostProcessor] Failed to ensure app icons: " + ex.Message);
             }
         }
     }

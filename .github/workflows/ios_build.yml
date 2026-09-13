@@ -158,6 +158,21 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$IOS_PROJECT_PATH/Info.plist" 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$IOS_PROJECT_PATH/Info.plist" 2>/dev/null || true
 
+          # Ensure 1024x1024 app icon exists in asset catalog
+          icon_set_dir="$IOS_PROJECT_PATH/Unity-iPhone/Images.xcassets/AppIcon.appiconset"
+          mkdir -p "$icon_set_dir"
+          if [[ ! -f "$icon_set_dir/Icon-1024.png" ]]; then
+            if [[ -f "Assets/AppIcon_1024.png" ]]; then
+              cp "Assets/AppIcon_1024.png" "$icon_set_dir/Icon-1024.png"
+            elif [[ -f "Assets/icon.png" ]]; then
+              cp "Assets/icon.png" "$icon_set_dir/Icon-1024.png"
+            fi
+          fi
+          test -f "$icon_set_dir/Icon-1024.png" || {
+            echo "::error::Missing 1024x1024 app icon (Icon-1024.png) in $icon_set_dir" >&2
+            exit 1
+          }
+
       - name: Resolve CocoaPods dependencies when present
         shell: bash
         run: |
@@ -317,14 +332,21 @@ jobs:
 
           ipa_path="$GITHUB_WORKSPACE/Builds/ipa/SoldierSmash.ipa"
           echo "Uploading $ipa_path to TestFlight using xcrun altool..."
-          if xcrun altool --upload-app \
+          upload_output=""
+          set +e
+          upload_output="$(xcrun altool --upload-app \
             --type ios \
             --file "$ipa_path" \
             --apiKey "$APP_STORE_CONNECT_KEY_ID" \
-            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"; then
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" 2>&1)"
+          altool_exit=$?
+          set -e
+          echo "$upload_output"
+
+          if [[ $altool_exit -eq 0 ]] && [[ "$upload_output" == *"No errors uploading"* ]] && ! [[ "$upload_output" =~ (UPLOAD FAILED|Validation failed|ERROR:) ]]; then
             echo "=== TestFlight upload successful via altool! ==="
           else
-            echo "Warning: altool upload returned an error; attempting fallback upload with iTMSTransporter..."
+            echo "Warning: altool upload was unsuccessful; attempting fallback upload with iTMSTransporter..."
             xcrun iTMSTransporter \
               -m upload \
               -assetFile "$ipa_path" \
