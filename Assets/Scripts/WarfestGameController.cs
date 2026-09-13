@@ -129,6 +129,8 @@ public sealed class WarfestGameController : MonoBehaviour
     private float infiniteBallsTimeRemaining;
     private readonly Button[] boosterButtons = new Button[WarfestSession.BoosterCount];
     private readonly Image[] boosterButtonImages = new Image[WarfestSession.BoosterCount];
+    private readonly Image[] boosterIconImages = new Image[WarfestSession.BoosterCount];
+    private readonly Image[] boosterBadgeImages = new Image[WarfestSession.BoosterCount];
     private readonly Text[] boosterCountLabels = new Text[WarfestSession.BoosterCount];
     private readonly GameObject[] boosterArmGlows = new GameObject[WarfestSession.BoosterCount];
     private GameObject boosterStatusPanel;
@@ -1975,21 +1977,69 @@ public void RegisterTargetBroken(WarfestTarget target)
 
         RectTransform confirmation = CreateRect(safeAreaRoot, "Leave Confirmation", new Vector2(0.5f, 0.5f), Vector2.one);
         leaveConfirmation = confirmation.gameObject;
-        CreateImage(confirmation, "Dim Background", new Color(0.02f, 0.04f, 0.08f, 0.76f),
-            new Vector2(0.5f, 0.5f), Vector2.one);
-        CreateImage(confirmation, "Confirmation Card", new Color(1f, 0.99f, 0.94f, 0.99f),
-            new Vector2(0.5f, 0.5f), new Vector2(0.52f, 0.50f));
-        CreateText(confirmation, "Confirmation Title", "LEAVE LEVEL?", 32, Ink, TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 0.62f), new Vector2(0.43f, 0.10f), headingFont);
-        CreateText(confirmation, "Confirmation Copy", "ARE YOU SURE?\nYOU WILL LOSE 1 LIFE", 18,
-            new Color(0.32f, 0.37f, 0.43f, 1f), TextAnchor.MiddleCenter,
-            new Vector2(0.5f, 0.51f), new Vector2(0.42f, 0.13f), bodyFont);
-        Button confirm = CreateButton(confirmation, "Confirm Leave", "LEAVE", new Color(0.78f, 0.12f, 0.12f, 1f),
-            new Vector2(0.41f, 0.37f), new Vector2(0.18f, 0.11f), 16);
+
+        // Dimmed backdrop click closes confirmation
+        Button dimBtn = CreateSpriteButton(confirmation, "Dim Background", null, new Vector2(0.5f, 0.5f), Vector2.one);
+        Image dimImg = dimBtn.GetComponent<Image>();
+        dimImg.color = new Color(0.02f, 0.05f, 0.10f, 0.76f);
+        dimBtn.onClick.AddListener(CancelLeaveConfirmation);
+
+        // Dialog container card
+        RectTransform card = CreateRect(confirmation, "Confirmation Card", new Vector2(0.5f, 0.50f), new Vector2(0.86f, 0.30f));
+        CreateSlicedSpriteImage(card, "Card Frame", WarfestAudio.GetDialogCardSprite(), new Vector2(0.5f, 0.5f), Vector2.one);
+        Sprite pill3Sprite = GetNewPanelSprite("panel_pill_3");
+        CreateSlicedSpriteImage(card, "Title Header", pill3Sprite, new Vector2(0.5f, 0.885f), new Vector2(0.60f, 0.17f));
+
+        Color creamColor = new Color(0.99f, 0.98f, 0.93f, 1f);
+        Color deepGreenColor = new Color(0.12f, 0.32f, 0.12f, 1f);
+
+        // Header Title: "QUIT LEVEL?"
+        Text title = CreateText(card, "Confirmation Title", "QUIT LEVEL?", 22, creamColor, TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 0.885f), new Vector2(0.55f, 0.14f), headingFont);
+        AddTextOutline(title, deepGreenColor, new Vector2(1.8f, -1.8f));
+
+        // Close "✕" button in top-right tab
+        GameObject closeObj = new GameObject("Close Button", typeof(RectTransform), typeof(Image), typeof(Button));
+        closeObj.transform.SetParent(card, false);
+        ApplyRect(closeObj.GetComponent<RectTransform>(), card, new Vector2(0.88f, 0.885f), new Vector2(0.12f, 0.14f));
+        Image closeImg = closeObj.GetComponent<Image>();
+        closeImg.color = Color.clear;
+        Button closeBtn = closeObj.GetComponent<Button>();
+        closeBtn.targetGraphic = closeImg;
+        closeBtn.onClick.AddListener(CancelLeaveConfirmation);
+        Text closeText = CreateText(closeObj.transform, "Close Text", "✕", 18, creamColor, TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 0.5f), Vector2.one, headingFont);
+        AddTextOutline(closeText, deepGreenColor, new Vector2(1.5f, -1.5f));
+
+        // Subtitle Copy: "ARE YOU SURE?\nYOU WILL LOSE 1 LIFE"
+        Text copy = CreateText(card, "Confirmation Copy", "ARE YOU SURE?\nYOU WILL LOSE 1 LIFE", 17,
+            new Color(0.18f, 0.24f, 0.32f, 1f), TextAnchor.MiddleCenter,
+            new Vector2(0.5f, 0.63f), new Vector2(0.85f, 0.18f), headingFont);
+        AddTextOutline(copy, new Color(1f, 1f, 1f, 0.65f), new Vector2(1f, -1f));
+
+        // Confirm Leave Button (RED circular plate from warfest_plates with Leave Icon from warfest_settings)
+        Button confirm = CreateSpriteButton(card, "Confirm Leave", settingsDisabledSprite,
+            new Vector2(0.33f, 0.32f), new Vector2(0.24f, 0.35f));
+        confirm.GetComponent<Image>().preserveAspect = true;
         confirm.onClick.AddListener(ConfirmLeaveLevel);
-        Button cancel = CreateButton(confirmation, "Cancel Leave", "CANCEL", new Color(0.18f, 0.52f, 0.22f, 1f),
-            new Vector2(0.59f, 0.37f), new Vector2(0.18f, 0.11f), 16);
+        Image leaveIcon = CreateSpriteImage(confirm.transform, "Leave Icon", leaveIconSprite, Color.white,
+            new Vector2(0.5f, 0.5f), new Vector2(0.60f, 0.60f), true);
+        leaveIcon.raycastTarget = false;
+        Text leaveLabel = CreateText(card, "Leave Label", "LEAVE", 16, new Color(0.78f, 0.12f, 0.12f, 1f),
+            TextAnchor.MiddleCenter, new Vector2(0.33f, 0.11f), new Vector2(0.30f, 0.12f), headingFont);
+        AddTextOutline(leaveLabel, Color.white, new Vector2(1f, -1f));
+
+        // Cancel / Resume Button (GREEN circular plate from warfest_plates with play triangle)
+        Button cancel = CreateSpriteButton(card, "Cancel Leave", settingsEnabledSprite,
+            new Vector2(0.67f, 0.32f), new Vector2(0.24f, 0.35f));
+        cancel.GetComponent<Image>().preserveAspect = true;
         cancel.onClick.AddListener(CancelLeaveConfirmation);
+        Text resumeIconText = CreateText(cancel.transform, "Resume Icon", "▶", 26, Color.white,
+            TextAnchor.MiddleCenter, new Vector2(0.53f, 0.5f), Vector2.one, headingFont);
+        AddTextOutline(resumeIconText, new Color(0.12f, 0.38f, 0.10f, 1f), new Vector2(1.5f, -1.5f));
+        Text resumeLabel = CreateText(card, "Resume Label", "RESUME", 16, new Color(0.15f, 0.52f, 0.15f, 1f),
+            TextAnchor.MiddleCenter, new Vector2(0.67f, 0.11f), new Vector2(0.30f, 0.12f), headingFont);
+        AddTextOutline(resumeLabel, Color.white, new Vector2(1f, -1f));
 
         settingsFlyout.SetActive(false);
         leaveConfirmation.SetActive(false);
@@ -2035,6 +2085,7 @@ public void RegisterTargetBroken(WarfestTarget target)
         if (levelEnded || leaveConfirmation == null) return;
         settingsOpen = true;
         settingsFlyout.SetActive(false);
+        leaveConfirmation.transform.SetAsLastSibling();
         leaveConfirmation.SetActive(true);
         CancelAim();
     }
@@ -2235,15 +2286,13 @@ public void RegisterTargetBroken(WarfestTarget target)
         return clip;
     }
 
-    // Lays the four boosters out in the bottom corners, mirroring the reference art: infinite balls
-    // above the spread fan on the left, the skull shot above the missile on the right.
-private void BuildBoosterHud()
+    private void BuildBoosterHud()
     {
-        Vector2 buttonSize = new Vector2(0.235f, 0.115f);
-        CreateBoosterButton(WarfestBooster.InfiniteBalls, new Vector2(0.135f, 0.205f), buttonSize);
-        CreateBoosterButton(WarfestBooster.SpreadShot, new Vector2(0.135f, 0.078f), buttonSize);
-        CreateBoosterButton(WarfestBooster.SkullShot, new Vector2(0.865f, 0.205f), buttonSize);
-        CreateBoosterButton(WarfestBooster.Missile, new Vector2(0.865f, 0.078f), buttonSize);
+        Vector2 buttonSize = new Vector2(0.17f, 0.080f);
+        CreateBoosterButton(WarfestBooster.InfiniteBalls, new Vector2(0.105f, 0.30f), buttonSize);
+        CreateBoosterButton(WarfestBooster.SpreadShot, new Vector2(0.105f, 0.185f), buttonSize);
+        CreateBoosterButton(WarfestBooster.SkullShot, new Vector2(0.895f, 0.30f), buttonSize);
+        CreateBoosterButton(WarfestBooster.Missile, new Vector2(0.895f, 0.185f), buttonSize);
 
         Image panel = CreateImage(safeAreaRoot, "Booster Status", new Color(0.055f, 0.12f, 0.20f, 0.94f),
             new Vector2(0.5f, 0.835f), new Vector2(0.74f, 0.075f));
@@ -2317,23 +2366,37 @@ private void RefreshBoosterStatus()
 private void CreateBoosterButton(WarfestBooster booster, Vector2 center, Vector2 size)
     {
         int index = (int)booster;
-        Button button = CreateSpriteButton(safeAreaRoot, "Booster " + booster, GetBoosterSprite(booster), center, size);
+        // Left boosters (InfiniteBalls = 0, SpreadShot = 2) use Green plate from warfest_plates.
+        // Right boosters (SkullShot = 1, Missile = 3) use Red plate from warfest_plates.
+        bool isGreen = booster == WarfestBooster.InfiniteBalls || booster == WarfestBooster.SpreadShot;
+        Sprite plateSprite = isGreen ? settingsEnabledSprite : settingsDisabledSprite;
+
+        Button button = CreateSpriteButton(safeAreaRoot, "Booster " + booster, plateSprite, center, size);
         button.transition = Selectable.Transition.None;
         button.navigation = new Navigation { mode = Navigation.Mode.None };
         boosterButtons[index] = button;
-        boosterButtonImages[index] = button.GetComponent<Image>();
+        Image plateImage = button.GetComponent<Image>();
+        plateImage.preserveAspect = true;
+        boosterButtonImages[index] = plateImage;
 
-        // The count badge is the only visual that changes when a booster is selected. Reuse the
-        // green settings sprite so the count reads as a consistent button badge in the game HUD.
-        Sprite boosterCountBackground = settingsEnabledSprite != null ? settingsEnabledSprite : GetCannonBaseSprite();
-        Image badge = CreateSpriteImage(button.transform, "Booster Badge", boosterCountBackground,
-            new Color(0.30f, 0.72f, 0.19f, 1f), new Vector2(0.82f, 0.12f), new Vector2(0.44f, 0.42f), true);
-        badge.color = new Color(0.30f, 0.72f, 0.19f, 1f);
+        // Nested booster graphic icon
+        Image icon = CreateSpriteImage(button.transform, "Booster Icon", GetBoosterSprite(booster), Color.white,
+            new Vector2(0.5f, 0.5f), new Vector2(0.78f, 0.78f), true);
+        icon.raycastTarget = false;
+        boosterIconImages[index] = icon;
+
+        // Count badge using the green/red plate
+        Sprite badgeSprite = isGreen ? settingsEnabledSprite : settingsDisabledSprite;
+        Image badge = CreateSpriteImage(button.transform, "Booster Badge", badgeSprite,
+            Color.white, new Vector2(0.80f, 0.20f), new Vector2(0.42f, 0.42f), true);
+        badge.color = Color.white;
         badge.raycastTarget = false;
-        Text badgeText = CreateText(badge.transform, "Booster Badge Label", "0", 19, Color.white,
+        boosterBadgeImages[index] = badge;
+
+        Text badgeText = CreateText(badge.transform, "Booster Badge Label", "0", 18, Color.white,
             TextAnchor.MiddleCenter, new Vector2(0.5f, 0.52f), Vector2.one, headingFont);
         badgeText.raycastTarget = false;
-        AddTextOutline(badgeText, new Color(0.10f, 0.30f, 0.08f, 1f), new Vector2(1f, -1f));
+        AddTextOutline(badgeText, new Color(0.10f, 0.10f, 0.10f, 0.85f), new Vector2(1.2f, -1.2f));
         boosterCountLabels[index] = badgeText;
 
         button.onClick.AddListener(() => OnBoosterClicked(booster));
@@ -2367,23 +2430,34 @@ private void RefreshBoosterHud()
             int count = WarfestSession.GetBoosterCount(booster);
             bool owned = count > 0;
             bool isThisBoosterArmed = hasArmedBooster && armedBooster == booster;
+            bool isGreen = booster == WarfestBooster.InfiniteBalls || booster == WarfestBooster.SpreadShot;
 
             if (boosterButtons[i] != null)
             {
                 boosterButtons[i].interactable = (owned && !selectionLocked) || isThisBoosterArmed;
+                boosterButtons[i].transform.localScale = isThisBoosterArmed ? Vector3.one * 1.10f : Vector3.one;
             }
             if (boosterButtonImages[i] != null)
             {
-                // Keep the original sprite and color in every state; only the count and interactivity change.
-                boosterButtonImages[i].color = Color.white;
+                // When owned > 0, plate is full color; when empty (0), plate dims
+                boosterButtonImages[i].color = owned ? Color.white : new Color(0.55f, 0.55f, 0.55f, 0.85f);
+            }
+            if (boosterIconImages[i] != null)
+            {
+                boosterIconImages[i].color = owned ? Color.white : new Color(0.60f, 0.60f, 0.60f, 0.75f);
+            }
+            if (boosterBadgeImages[i] != null)
+            {
+                // Badge is green when in stock, red when out of stock
+                boosterBadgeImages[i].sprite = owned ? settingsEnabledSprite : settingsDisabledSprite;
             }
             if (boosterCountLabels[i] != null)
             {
-                boosterCountLabels[i].text = count.ToString();
+                boosterCountLabels[i].text = owned ? count.ToString() : "+";
             }
             if (boosterArmGlows[i] != null)
             {
-                boosterArmGlows[i].SetActive(false);
+                boosterArmGlows[i].SetActive(isThisBoosterArmed);
             }
         }
 
@@ -2531,6 +2605,7 @@ private Canvas CreateCanvas(string name)
         GameObject gameObject = new GameObject(name, typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
         Canvas canvas = gameObject.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 100;
         hudScaler = gameObject.GetComponent<CanvasScaler>();
         hudScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         hudScaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
@@ -2613,6 +2688,32 @@ private Canvas CreateCanvas(string name)
         image.sprite = sprite;
         image.preserveAspect = preserveAspect;
         return image;
+    }
+
+    private Image CreateSlicedSpriteImage(Transform parent, string name, Sprite sprite, Vector2 center, Vector2 size)
+    {
+        GameObject gameObject = new GameObject(name, typeof(RectTransform), typeof(Image));
+        gameObject.transform.SetParent(parent, false);
+        ApplyRect(gameObject.GetComponent<RectTransform>(), parent, center, size);
+        Image image = gameObject.GetComponent<Image>();
+        image.sprite = sprite;
+        image.type = Image.Type.Sliced;
+        image.raycastTarget = false;
+        return image;
+    }
+
+    private Sprite GetNewPanelSprite(string spriteName)
+    {
+        Sprite[] sprites = Resources.LoadAll<Sprite>("panel_new");
+        if (sprites != null)
+        {
+            for (int i = 0; i < sprites.Length; i++)
+            {
+                if (sprites[i] != null && sprites[i].name == spriteName)
+                    return sprites[i];
+            }
+        }
+        return null;
     }
 
     private RectTransform CreateRect(Transform parent, string name, Vector2 center, Vector2 size)

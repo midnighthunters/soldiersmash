@@ -11,6 +11,7 @@
 /[Bb]uilds/
 /[Mm]emoryCaptures/
 /[Rr]ecordings/
+*_BurstDebugInformation_DoNotShip/
 
 # Local Unity resources
 /Assets/Resources/*

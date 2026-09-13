@@ -7386,6 +7386,10 @@ void RegisterAllStrippedInternalCalls()
 		void Register_UnityEngine_Transform_SetAsFirstSibling_Injected();
 		Register_UnityEngine_Transform_SetAsFirstSibling_Injected();
 
+		//System.Void UnityEngine.Transform::SetAsLastSibling_Injected(System.IntPtr)
+		void Register_UnityEngine_Transform_SetAsLastSibling_Injected();
+		Register_UnityEngine_Transform_SetAsLastSibling_Injected();
+
 		//System.Void UnityEngine.Transform::SetLocalPositionAndRotation_Injected(System.IntPtr,UnityEngine.Vector3&,UnityEngine.Quaternion&)
 		void Register_UnityEngine_Transform_SetLocalPositionAndRotation_Injected();
 		Register_UnityEngine_Transform_SetLocalPositionAndRotation_Injected();

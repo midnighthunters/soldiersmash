@@ -57,10 +57,12 @@ public static class WarfestFontResolver
 
         // Tier 1: Resources.Load from packaged Resources/Fonts/
         if (_headingFont == null)
-            _headingFont = Resources.Load<Font>("Fonts/LuckiestGuy-Regular") ?? Resources.Load<Font>("LuckiestGuy-Regular");
+            _headingFont = Resources.Load<Font>("Fonts/Warfest-Heading") ?? Resources.Load<Font>("Warfest-Heading")
+                        ?? Resources.Load<Font>("Fonts/LuckiestGuy-Regular") ?? Resources.Load<Font>("LuckiestGuy-Regular");
 
         if (_bodyFont == null)
-            _bodyFont = Resources.Load<Font>("Fonts/Fredoka-Bold") ?? Resources.Load<Font>("Fredoka-Bold");
+            _bodyFont = Resources.Load<Font>("Fonts/Warfest-Body") ?? Resources.Load<Font>("Warfest-Body")
+                     ?? Resources.Load<Font>("Fonts/Fredoka-Bold") ?? Resources.Load<Font>("Fredoka-Bold");
 
         // Tier 2: Loaded font objects in current domain
         if (_headingFont == null || _bodyFont == null)
@@ -74,9 +76,9 @@ public static class WarfestFontResolver
                     {
                         if (f == null) continue;
                         string fName = f.name;
-                        if (_headingFont == null && fName.IndexOf("Luckiest", StringComparison.OrdinalIgnoreCase) >= 0)
+                        if (_headingFont == null && (fName.IndexOf("Warfest-Heading", StringComparison.OrdinalIgnoreCase) >= 0 || fName.IndexOf("Luckiest", StringComparison.OrdinalIgnoreCase) >= 0))
                             _headingFont = f;
-                        if (_bodyFont == null && fName.IndexOf("Fredoka", StringComparison.OrdinalIgnoreCase) >= 0)
+                        if (_bodyFont == null && (fName.IndexOf("Warfest-Body", StringComparison.OrdinalIgnoreCase) >= 0 || fName.IndexOf("Fredoka", StringComparison.OrdinalIgnoreCase) >= 0))
                             _bodyFont = f;
                     }
                 }

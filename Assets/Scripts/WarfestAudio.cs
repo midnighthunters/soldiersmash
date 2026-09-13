@@ -41,7 +41,7 @@ public static class WarfestAudio
     {
         if (everytimeClip == null)
         {
-            everytimeClip = Resources.Load<AudioClip>("audio/everytime");
+            everytimeClip = Resources.Load<AudioClip>("audio/warfest_ambient") ?? Resources.Load<AudioClip>("audio/everytime");
         }
         return everytimeClip;
     }
@@ -50,7 +50,7 @@ public static class WarfestAudio
     {
         if (levelClip == null)
         {
-            levelClip = Resources.Load<AudioClip>("audio/level");
+            levelClip = Resources.Load<AudioClip>("audio/warfest_battle") ?? Resources.Load<AudioClip>("audio/level");
         }
         return levelClip;
     }
@@ -90,6 +90,7 @@ public static class WarfestAudio
                name.Contains("music") ||
                name.Contains("theme") ||
                name.Contains("bgm") ||
+               name.Contains("ambient") ||
                name.Contains("everytime") ||
                name.Contains("victory");
     }
@@ -132,21 +133,30 @@ public static class WarfestAudio
     private static Sprite soundIconSprite;
     private static Sprite musicIconSprite;
     private static Sprite leaveIconSprite;
+    private static Sprite gearIconSprite;
     private static Sprite settingsEnabledSprite;
     private static Sprite settingsDisabledSprite;
+
+    private static Sprite FindSprite(string resourcePath, string spriteName)
+    {
+        Sprite[] all = Resources.LoadAll<Sprite>(resourcePath);
+        if (all != null)
+        {
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i] != null && all[i].name == spriteName)
+                    return all[i];
+            }
+            if (all.Length > 0 && all[0] != null) return all[0];
+        }
+        return null;
+    }
 
     public static Sprite GetSoundIconSprite()
     {
         if (soundIconSprite == null)
         {
-            Texture2D icons = Resources.Load<Texture2D>("settings_icons");
-            if (icons != null)
-            {
-                float sx = icons.width / 1536f;
-                float sy = icons.height / 1024f;
-                // Center precisely around speaker artwork (Top-Right quadrant)
-                soundIconSprite = Sprite.Create(icons, new Rect(864f * sx, 520.5f * sy, 466f * sx, 466f * sy), new Vector2(0.5f, 0.5f), 100f);
-            }
+            soundIconSprite = FindSprite("warfest_settings", "icon_sound") ?? FindSprite("settings", "icon_sound");
         }
         return soundIconSprite;
     }
@@ -155,14 +165,7 @@ public static class WarfestAudio
     {
         if (musicIconSprite == null)
         {
-            Texture2D icons = Resources.Load<Texture2D>("settings_icons");
-            if (icons != null)
-            {
-                float sx = icons.width / 1536f;
-                float sy = icons.height / 1024f;
-                // Center precisely around music note artwork (Bottom-Left quadrant)
-                musicIconSprite = Sprite.Create(icons, new Rect(223.5f * sx, 26f * sy, 430f * sx, 430f * sy), new Vector2(0.5f, 0.5f), 100f);
-            }
+            musicIconSprite = FindSprite("warfest_settings", "icon_music") ?? FindSprite("settings", "icon_music");
         }
         return musicIconSprite;
     }
@@ -171,30 +174,25 @@ public static class WarfestAudio
     {
         if (leaveIconSprite == null)
         {
-            Texture2D icons = Resources.Load<Texture2D>("settings_icons");
-            if (icons != null)
-            {
-                float sx = icons.width / 1536f;
-                float sy = icons.height / 1024f;
-                // Center precisely around exit arrow artwork (Top-Left quadrant)
-                leaveIconSprite = Sprite.Create(icons, new Rect(242.5f * sx, 548f * sy, 420f * sx, 420f * sy), new Vector2(0.5f, 0.5f), 100f);
-            }
+            leaveIconSprite = FindSprite("warfest_settings", "icon_leave") ?? FindSprite("settings", "icon_leave");
         }
         return leaveIconSprite;
+    }
+
+    public static Sprite GetGearIconSprite()
+    {
+        if (gearIconSprite == null)
+        {
+            gearIconSprite = FindSprite("warfest_settings", "icon_gear") ?? FindSprite("settings", "icon_gear");
+        }
+        return gearIconSprite;
     }
 
     public static Sprite GetSettingsEnabledSprite()
     {
         if (settingsEnabledSprite == null)
         {
-            Texture2D bg = Resources.Load<Texture2D>("settings_background");
-            if (bg != null)
-            {
-                float sx = bg.width / 500f;
-                float sy = bg.height / 295f;
-                // Center precisely around circular green button plate
-                settingsEnabledSprite = Sprite.Create(bg, new Rect(254f * sx, 36.5f * sy, 230f * sx, 230f * sy), new Vector2(0.5f, 0.5f), 100f);
-            }
+            settingsEnabledSprite = FindSprite("warfest_plates", "plate_green") ?? FindSprite("set_back", "plate_green");
         }
         return settingsEnabledSprite;
     }
@@ -203,15 +201,18 @@ public static class WarfestAudio
     {
         if (settingsDisabledSprite == null)
         {
-            Texture2D bg = Resources.Load<Texture2D>("settings_background");
-            if (bg != null)
-            {
-                float sx = bg.width / 500f;
-                float sy = bg.height / 295f;
-                // Center precisely around circular red button plate
-                settingsDisabledSprite = Sprite.Create(bg, new Rect(15f * sx, 36.5f * sy, 230f * sx, 230f * sy), new Vector2(0.5f, 0.5f), 100f);
-            }
+            settingsDisabledSprite = FindSprite("warfest_plates", "plate_red") ?? FindSprite("set_back", "plate_red");
         }
         return settingsDisabledSprite;
+    }
+
+    private static Sprite dialogCardSprite;
+    public static Sprite GetDialogCardSprite()
+    {
+        if (dialogCardSprite == null)
+        {
+            dialogCardSprite = FindSprite("pnl", "dialog_card");
+        }
+        return dialogCardSprite;
     }
 }

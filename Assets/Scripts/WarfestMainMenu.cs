@@ -300,8 +300,8 @@ public sealed class WarfestMainMenu : MonoBehaviour
 
     private void CreateBackground(RectTransform root)
     {
-        Texture2D texture = Resources.Load<Texture2D>("background");
-        Image background = CreateImage(root, "Bangalore Background", Color.white, new Vector2(0.5f, 0.5f), Vector2.one);
+        Texture2D texture = Resources.Load<Texture2D>("menu_background") ?? Resources.Load<Texture2D>("background");
+        Image background = CreateImage(root, "Menu Background", Color.white, new Vector2(0.5f, 0.5f), Vector2.one);
         if (texture != null)
         {
             background.sprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
@@ -310,87 +310,74 @@ public sealed class WarfestMainMenu : MonoBehaviour
             fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
             fitter.aspectRatio = (float)texture.width / texture.height;
         }
-
-        CreateImage(root, "Background Readability", new Color(0.08f, 0.14f, 0.02f, 0.08f), new Vector2(0.5f, 0.5f), Vector2.one);
     }
 
     private void BuildTopStatus(WarfestLevelCatalog.LevelDefinition level, int balls)
     {
         const float topBarY = 0.932f;
-        const float barHeight = 0.046f;
+        const float barHeight = 0.042f;
 
         // 1. Commander Avatar: circular portrait on left
         CreatePanelImage(safeAreaRoot, "Commander", "avatar_soldier",
-            new Vector2(0.075f, topBarY), new Vector2(0.115f, 0.054f));
+            new Vector2(0.098f, topBarY), new Vector2(0.138f, 0.064f));
 
-        // 2. Coin Bar: Pill container at topBarY
+        // 2. Coin Bar: Pill container
         Image coinBar = CreateSlicedPanelImage(safeAreaRoot, "Coin Bar", "panel_pill_1",
-            new Vector2(0.320f, topBarY), new Vector2(0.285f, barHeight));
+            new Vector2(0.355f, topBarY), new Vector2(0.240f, barHeight));
 
-        // Coin Icon inside coinBar on left
-        CreatePanelImage(coinBar.transform, "Coin Icon", "icon_star_coin",
-            new Vector2(0.14f, 0.50f), new Vector2(0.24f, 0.82f));
+        // Coin Icon overlapping left end of coinBar
+        CreatePanelImage(safeAreaRoot, "Coin Icon", "icon_star_coin",
+            new Vector2(0.248f, topBarY), new Vector2(0.102f, 0.050f));
 
-        // Coin Value text centered in coinBar
-        coinValueText = CreateText(coinBar.transform, "Coin Value", WarfestSession.Coins.ToString(), 17, Navy,
-            TextAnchor.MiddleCenter, new Vector2(0.52f, 0.50f), new Vector2(0.46f, 0.70f), bodyFont);
+        // Coin Value text centered between coin and plus
+        coinValueText = CreateText(safeAreaRoot, "Coin Value", WarfestSession.Coins.ToString(), 19, Navy,
+            TextAnchor.MiddleCenter, new Vector2(0.355f, topBarY), new Vector2(0.130f, barHeight), bodyFont);
 
         // Coin Plus Button on right
-        Button coinPlus = CreatePanelButton(coinBar.transform, "Coin Plus", "btn_plus",
-            new Vector2(0.88f, 0.50f), new Vector2(0.21f, 0.78f));
+        Button coinPlus = CreatePanelButton(safeAreaRoot, "Coin Plus", "btn_plus",
+            new Vector2(0.462f, topBarY), new Vector2(0.084f, 0.043f));
         coinPlus.onClick.AddListener(OpenBuyLivesPanel);
 
-        // 3. Lives Bar: Pill container at topBarY - tap to open Buy Lives panel
+        // 3. Lives Bar: Pill container - tap to open Buy Lives panel
         int lives = WarfestSession.Lives;
         Button livesBar = CreateSlicedPanelButton(safeAreaRoot, "Lives Bar", "panel_pill_2",
-            new Vector2(0.665f, topBarY), new Vector2(0.295f, barHeight));
+            new Vector2(0.690f, topBarY), new Vector2(0.245f, barHeight));
         livesBar.onClick.AddListener(OpenBuyLivesPanel);
 
-        // Heart icon inside livesBar on left
-        CreatePanelImage(livesBar.transform, "Heart Icon", "icon_heart",
-            new Vector2(0.14f, 0.50f), new Vector2(0.24f, 0.82f));
+        // Heart icon overlapping left end of livesBar
+        Button heartBtn = CreatePanelButton(safeAreaRoot, "Heart Icon", "icon_heart",
+            new Vector2(0.582f, topBarY), new Vector2(0.114f, 0.054f));
+        heartBtn.onClick.AddListener(OpenBuyLivesPanel);
 
+        // White life count inside heart
+        lifeCountText = CreateText(safeAreaRoot, "Life Count", lives.ToString(), 24, Color.white,
+            TextAnchor.MiddleCenter, new Vector2(0.582f, topBarY + 0.002f), new Vector2(0.080f, 0.045f), bodyFont);
+
+        // Life Status text inside pill ("FULL" or timer)
         bool isFull = WarfestSession.LivesFull;
-        lifeCountText = CreateOutlinedText(livesBar.transform, "Life Count", isFull ? "FULL" : lives.ToString(), 18, Cream,
-            TextAnchor.MiddleCenter, isFull ? new Vector2(0.50f, 0.50f) : new Vector2(0.36f, 0.50f), isFull ? new Vector2(0.52f, 0.70f) : new Vector2(0.22f, 0.70f), headingFont, Navy, 1.4f);
-        lifeStatusText = CreateText(livesBar.transform, "Life Status", isFull ? "" : WarfestSession.LifeTimerText, 13, DeepGreen,
-            TextAnchor.MiddleCenter, new Vector2(0.64f, 0.50f), new Vector2(0.30f, 0.70f), bodyFont);
+        lifeStatusText = CreateText(safeAreaRoot, "Life Status", isFull ? "FULL" : WarfestSession.LifeTimerText, 20, Navy,
+            TextAnchor.MiddleCenter, new Vector2(0.722f, topBarY), new Vector2(0.140f, barHeight), bodyFont);
 
-        // Plus button inside livesBar on right
-        Button livesPlus = CreatePanelButton(livesBar.transform, "Lives Plus", "btn_plus",
-            new Vector2(0.88f, 0.50f), new Vector2(0.21f, 0.78f));
-        livesPlus.onClick.AddListener(OpenBuyLivesPanel);
-
-        // 4. Settings Gear Icon at topBarY on far right
+        // 4. Settings Gear Icon on far right
         Button settingsBtn = CreatePanelButton(safeAreaRoot, "Settings", "icon_settings",
-            new Vector2(0.925f, topBarY), new Vector2(0.095f, 0.046f));
+            new Vector2(0.910f, topBarY), new Vector2(0.104f, 0.052f));
         settingsBtn.onClick.AddListener(ToggleSettingsFlyout);
     }
 
     private void BuildMissionCard(WarfestLevelCatalog.LevelDefinition level, int balls)
     {
-        RectTransform card = CreateContainer(safeAreaRoot, "Mission Card", new Vector2(0.5f, 0.48f), new Vector2(0.88f, 0.52f));
-
-        // Level pill banner header
-        Image levelPill = CreateSlicedPanelImage(card, "Level Pill", "panel_pill_3",
-            new Vector2(0.5f, 0.82f), new Vector2(0.86f, 0.15f));
-
         int displayLevel = WarfestSession.CampaignComplete ? WarfestSession.LevelCount : level.number;
-        string levelTitle = WarfestSession.CampaignComplete ? "REPLAY " + displayLevel : "LEVEL " + displayLevel.ToString("00");
-        string diffText = level.difficulty <= 2 ? "EASY" : level.difficulty <= 4 ? "HARD" : "ELITE";
-        if (WarfestSession.CampaignComplete) diffText = "MASTER";
+        string badgeText = $"{displayLevel}/{WarfestSession.LevelCount}";
 
-        // Unified Level and Difficulty header for clean centered alignment without overlapping
-        CreateOutlinedText(levelPill.transform, "Level Header", $"{levelTitle}  •  {diffText}", 22, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.50f, 0.50f), new Vector2(0.88f, 0.75f), headingFont, DeepGreen, 2f);
+        // 1. Progress Badge ("1/200")
+        Image levelPill = CreateSlicedPanelImage(safeAreaRoot, "Level Progress Badge", "panel_pill_3",
+            new Vector2(0.50f, 0.386f), new Vector2(0.360f, 0.042f));
+        CreateText(levelPill.transform, "Progress Text", badgeText, 24, Navy,
+            TextAnchor.MiddleCenter, new Vector2(0.50f, 0.50f), Vector2.one, bodyFont);
 
-        // Campaign progress indicator
-        CreateOutlinedText(card, "Campaign Progress", "Campaign: " + displayLevel + " / " + WarfestSession.LevelCount + " Completed", 16, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.66f), new Vector2(0.92f, 0.08f), bodyFont, Navy, 1.4f);
-
-        // Center Big Juicy Green Play Button from panel_new
-        Button deploy = CreatePanelButton(card, "Deploy Mission", "btn_play",
-            new Vector2(0.5f, 0.35f), new Vector2(0.78f, 0.28f));
+        // 2. Center Big Green Play Button
+        Button deploy = CreatePanelButton(safeAreaRoot, "Deploy Mission", "btn_play",
+            new Vector2(0.50f, 0.270f), new Vector2(0.720f, 0.158f));
         deployButton = deploy;
         deploy.interactable = true;
 
@@ -406,9 +393,19 @@ public sealed class WarfestMainMenu : MonoBehaviour
             WarfestLoadingScreen.ShowAndLoad(lvl);
         });
 
-        // "BATTLE" label on the play button (left-center aligned before the triangle)
-        CreateOutlinedText(deploy.transform, "Play Text", "BATTLE", 30, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.36f, 0.52f), new Vector2(0.46f, 0.60f), headingFont, DeepGreen, 2.5f);
+        string levelTitle = WarfestSession.CampaignComplete ? "REPLAY" : "LEVEL " + displayLevel.ToString("00");
+
+        // Top line: "LEVEL 01" pure crisp white text
+        CreateText(deploy.transform, "Level Header", levelTitle, 22, Color.white,
+            TextAnchor.MiddleCenter, new Vector2(0.38f, 0.73f), new Vector2(0.50f, 0.24f), bodyFont);
+
+        // Main line: "PLAY" with downward 3D drop shadow
+        Text playText = CreateText(deploy.transform, "Play Text", "PLAY", 52, Color.white,
+            TextAnchor.MiddleCenter, new Vector2(0.38f, 0.38f), new Vector2(0.50f, 0.48f), bodyFont);
+        Shadow playShadow = playText.gameObject.AddComponent<Shadow>();
+        playShadow.effectColor = new Color(0.11f, 0.42f, 0.13f, 0.95f);
+        playShadow.effectDistance = new Vector2(0f, -3.5f);
+        playShadow.useGraphicAlpha = true;
     }
 
     private void RefreshLifeHud()
@@ -421,18 +418,14 @@ public sealed class WarfestMainMenu : MonoBehaviour
 
         displayedLives = lives;
         displayedLifeSeconds = seconds;
+        lifeCountText.text = lives.ToString();
         if (lives >= WarfestSession.MaxLives)
         {
-            lifeCountText.text = "FULL";
-            lifeStatusText.text = "";
-            SetRect(lifeCountText.rectTransform, new Vector2(0.50f, 0.50f), new Vector2(0.52f, 0.70f));
+            lifeStatusText.text = "FULL";
         }
         else
         {
-            lifeCountText.text = lives.ToString();
             lifeStatusText.text = WarfestSession.LifeTimerText;
-            SetRect(lifeCountText.rectTransform, new Vector2(0.36f, 0.50f), new Vector2(0.22f, 0.70f));
-            SetRect(lifeStatusText.rectTransform, new Vector2(0.64f, 0.50f), new Vector2(0.30f, 0.70f));
         }
         RefreshCoinHud();
         RefreshBuyLivesPanelState();
@@ -448,11 +441,11 @@ public sealed class WarfestMainMenu : MonoBehaviour
 
     private void BuildBottomNavigation()
     {
-        RectTransform nav = CreateContainer(safeAreaRoot, "Bottom Navigation", new Vector2(0.5f, 0.08f), new Vector2(0.90f, 0.12f));
+        RectTransform nav = CreateContainer(safeAreaRoot, "Bottom Navigation", new Vector2(0.50f, 0.092f), new Vector2(0.220f, 0.098f));
 
-        // Only keep the home button in bottom bar and replace sprites with the panel_new spritesheet
+        // Only keep the home button in bottom bar, centered
         Button home = CreatePanelButton(nav, "Home Tab", "btn_home",
-            new Vector2(0.5f, 0.5f), new Vector2(0.24f, 0.85f));
+            new Vector2(0.5f, 0.5f), Vector2.one);
         home.onClick.AddListener(WarfestSession.ReturnToMenu);
     }
 
@@ -552,6 +545,18 @@ public sealed class WarfestMainMenu : MonoBehaviour
         return image;
     }
 
+    private Image CreateSlicedSpriteImage(Transform parent, string name, Sprite sprite, Vector2 center, Vector2 size)
+    {
+        GameObject gameObject = new GameObject(name, typeof(RectTransform), typeof(Image));
+        gameObject.transform.SetParent(parent, false);
+        SetRect(gameObject.GetComponent<RectTransform>(), center, size);
+        Image image = gameObject.GetComponent<Image>();
+        image.sprite = sprite;
+        image.type = Image.Type.Sliced;
+        image.raycastTarget = false;
+        return image;
+    }
+
     private Image CreateSlicedPanelImage(Transform parent, string name, string spriteName, Vector2 center, Vector2 size)
     {
         GameObject gameObject = new GameObject(name, typeof(RectTransform), typeof(Image));
@@ -561,6 +566,11 @@ public sealed class WarfestMainMenu : MonoBehaviour
         image.sprite = GetPanelSprite(spriteName);
         image.type = Image.Type.Sliced;
         image.raycastTarget = false;
+        if (image.sprite != null && size.y > 0f && size.y < 1f)
+        {
+            float targetHeight = size.y * 844f;
+            image.pixelsPerUnitMultiplier = image.sprite.rect.height / targetHeight;
+        }
         return image;
     }
 
@@ -591,6 +601,11 @@ public sealed class WarfestMainMenu : MonoBehaviour
         Image image = gameObject.GetComponent<Image>();
         image.sprite = GetPanelSprite(spriteName);
         image.type = Image.Type.Sliced;
+        if (image.sprite != null && size.y > 0f && size.y < 1f)
+        {
+            float targetHeight = size.y * 844f;
+            image.pixelsPerUnitMultiplier = image.sprite.rect.height / targetHeight;
+        }
         Button button = gameObject.GetComponent<Button>();
         ColorBlock colors = button.colors;
         colors.normalColor = Color.white;
@@ -757,18 +772,18 @@ public sealed class WarfestMainMenu : MonoBehaviour
         backdropBtn.onClick.AddListener(ToggleSettingsFlyout);
 
         // Dialog container card
-        RectTransform card = CreateContainer(flyout, "Settings Card", new Vector2(0.5f, 0.50f), new Vector2(0.80f, 0.256f));
-        CreateSlicedPanelImage(card, "Card Frame", "panel_pill_1", new Vector2(0.5f, 0.5f), Vector2.one);
-        CreateSlicedPanelImage(card, "Title Header", "panel_pill_3", new Vector2(0.5f, 0.865f), new Vector2(0.65f, 0.18f));
+        RectTransform card = CreateContainer(flyout, "Settings Card", new Vector2(0.5f, 0.50f), new Vector2(0.86f, 0.280f));
+        CreateSlicedSpriteImage(card, "Card Frame", WarfestAudio.GetDialogCardSprite(), new Vector2(0.5f, 0.5f), Vector2.one);
+        CreateSlicedPanelImage(card, "Title Header", "panel_pill_3", new Vector2(0.5f, 0.880f), new Vector2(0.58f, 0.17f));
 
         // Title: "SETTINGS" - cleanly nested within the top tab
         CreateOutlinedText(card, "Settings Title", "SETTINGS", 22, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.865f), new Vector2(0.60f, 0.14f), headingFont, DeepGreen, 2f);
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.880f), new Vector2(0.55f, 0.14f), headingFont, DeepGreen, 2f);
 
         // Close "✕" button in top-right tab
         GameObject closeObj = new GameObject("Close Button", typeof(RectTransform), typeof(Image), typeof(Button));
         closeObj.transform.SetParent(card, false);
-        SetRect(closeObj.GetComponent<RectTransform>(), new Vector2(0.90f, 0.865f), new Vector2(0.12f, 0.12f));
+        SetRect(closeObj.GetComponent<RectTransform>(), new Vector2(0.88f, 0.880f), new Vector2(0.12f, 0.14f));
         Image closeImg = closeObj.GetComponent<Image>();
         closeImg.color = Color.clear;
         Button closeBtn = closeObj.GetComponent<Button>();
@@ -779,23 +794,23 @@ public sealed class WarfestMainMenu : MonoBehaviour
 
         // Sound Toggle Button (prominent circular button, aligned symmetrically on left)
         Button sound = CreateAudioToggleButton(card, "Sound Toggle",
-            WarfestAudio.GetSoundIconSprite(), new Vector2(0.34f, 0.550f), new Vector2(0.23f, 0.332f), out soundButtonBackground);
+            WarfestAudio.GetSoundIconSprite(), new Vector2(0.33f, 0.530f), new Vector2(0.24f, 0.35f), out soundButtonBackground);
         sound.onClick.AddListener(ToggleSound);
 
         // Music Toggle Button (prominent circular button, aligned symmetrically on right)
         Button music = CreateAudioToggleButton(card, "Music Toggle",
-            WarfestAudio.GetMusicIconSprite(), new Vector2(0.66f, 0.550f), new Vector2(0.23f, 0.332f), out musicButtonBackground);
+            WarfestAudio.GetMusicIconSprite(), new Vector2(0.67f, 0.530f), new Vector2(0.24f, 0.35f), out musicButtonBackground);
         music.onClick.AddListener(ToggleMusic);
 
         // Legal Links: Privacy Policy & Terms of Use (symmetrically centered around middle dot)
         CreateLinkButton(card, "Privacy Policy Link", "<b>Privacy Policy</b>",
-            PrivacyPolicyUrl, new Vector2(0.27f, 0.205f), new Vector2(0.38f, 0.15f), TextAnchor.MiddleRight);
+            PrivacyPolicyUrl, new Vector2(0.27f, 0.190f), new Vector2(0.38f, 0.14f), TextAnchor.MiddleRight);
 
         CreateText(card, "Link Separator", "<b>•</b>", 16, new Color(Navy.r, Navy.g, Navy.b, 0.50f),
-            TextAnchor.MiddleCenter, new Vector2(0.50f, 0.205f), new Vector2(0.06f, 0.15f), bodyFont);
+            TextAnchor.MiddleCenter, new Vector2(0.50f, 0.190f), new Vector2(0.06f, 0.14f), bodyFont);
 
         CreateLinkButton(card, "Terms of Use Link", "<b>Terms of Use</b>",
-            TermsOfUseUrl, new Vector2(0.73f, 0.205f), new Vector2(0.38f, 0.15f), TextAnchor.MiddleLeft);
+            TermsOfUseUrl, new Vector2(0.73f, 0.190f), new Vector2(0.38f, 0.14f), TextAnchor.MiddleLeft);
 
         settingsFlyout.SetActive(settingsOpen);
         RefreshSettingsButtons();
@@ -809,6 +824,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
         SetRect(gameObject.GetComponent<RectTransform>(), center, size);
         background = gameObject.GetComponent<Image>();
         background.sprite = WarfestAudio.GetSettingsEnabledSprite();
+        background.color = Color.white;
         background.preserveAspect = true;
 
         Button button = gameObject.GetComponent<Button>();
@@ -821,7 +837,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
 
         GameObject iconObj = new GameObject("Icon", typeof(RectTransform), typeof(Image));
         iconObj.transform.SetParent(gameObject.transform, false);
-        SetRect(iconObj.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(0.68f, 0.68f));
+        SetRect(iconObj.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(0.60f, 0.60f));
         Image icon = iconObj.GetComponent<Image>();
         icon.sprite = iconSprite;
         icon.color = Color.white;
@@ -934,18 +950,18 @@ public sealed class WarfestMainMenu : MonoBehaviour
         backdropBtn.onClick.AddListener(CloseBuyLivesPanel);
 
         // Dialog container card
-        RectTransform card = CreateContainer(flyout, "Buy Lives Card", new Vector2(0.5f, 0.50f), new Vector2(0.80f, 0.256f));
-        CreateSlicedPanelImage(card, "Card Frame", "panel_pill_1", new Vector2(0.5f, 0.5f), Vector2.one);
-        CreateSlicedPanelImage(card, "Title Header", "panel_pill_3", new Vector2(0.5f, 0.865f), new Vector2(0.65f, 0.18f));
+        RectTransform card = CreateContainer(flyout, "Buy Lives Card", new Vector2(0.5f, 0.50f), new Vector2(0.86f, 0.280f));
+        CreateSlicedSpriteImage(card, "Card Frame", WarfestAudio.GetDialogCardSprite(), new Vector2(0.5f, 0.5f), Vector2.one);
+        CreateSlicedPanelImage(card, "Title Header", "panel_pill_3", new Vector2(0.5f, 0.880f), new Vector2(0.58f, 0.17f));
 
         // Title: "LIVES" - cleanly nested within top tab
         CreateOutlinedText(card, "Buy Lives Title", "LIVES", 22, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.865f), new Vector2(0.60f, 0.14f), headingFont, DeepGreen, 2f);
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.880f), new Vector2(0.55f, 0.14f), headingFont, DeepGreen, 2f);
 
         // Close "✕" button in top-right tab
         GameObject closeObj = new GameObject("Close Button", typeof(RectTransform), typeof(Image), typeof(Button));
         closeObj.transform.SetParent(card, false);
-        SetRect(closeObj.GetComponent<RectTransform>(), new Vector2(0.90f, 0.865f), new Vector2(0.12f, 0.12f));
+        SetRect(closeObj.GetComponent<RectTransform>(), new Vector2(0.88f, 0.880f), new Vector2(0.12f, 0.14f));
         Image closeImg = closeObj.GetComponent<Image>();
         closeImg.color = Color.clear;
         Button closeBtn = closeObj.GetComponent<Button>();
@@ -956,26 +972,27 @@ public sealed class WarfestMainMenu : MonoBehaviour
 
         // Text: "Buy 2 lives"
         CreateOutlinedText(card, "Prompt Text", "Buy 2 lives", 26, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.620f), new Vector2(0.85f, 0.18f), headingFont, DeepGreen, 2.2f);
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.620f), new Vector2(0.85f, 0.16f), headingFont, DeepGreen, 2.2f);
 
-        // Button: Green button with "200 coins"
-        Button buyBtn = CreatePanelButton(card, "Buy Button", "btn_play",
-            new Vector2(0.5f, 0.320f), new Vector2(0.60f, 0.280f));
+        // Button: Clean green pill button with "200 coins" (using sliced panel_pill_2 tinted vibrant green, no play triangle)
+        Button buyBtn = CreateSlicedPanelButton(card, "Buy Button", "panel_pill_2",
+            new Vector2(0.5f, 0.340f), new Vector2(0.66f, 0.220f));
         buyLivesButton = buyBtn;
         buyLivesButtonBg = buyBtn.GetComponent<Image>();
+        buyLivesButtonBg.color = new Color(0.28f, 0.78f, 0.16f, 1f);
         buyBtn.onClick.AddListener(OnBuyLivesClicked);
 
         // Coin Icon inside button (left side)
         buyLivesCoinIcon = CreatePanelImage(buyBtn.transform, "Coin Icon", "icon_star_coin",
-            new Vector2(0.22f, 0.50f), new Vector2(0.20f, 0.60f));
+            new Vector2(0.16f, 0.50f), new Vector2(0.16f, 0.70f));
 
         // Button Text: "200 COINS"
-        buyLivesButtonText = CreateOutlinedText(buyBtn.transform, "Cost Text", "200 COINS", 20, Cream,
-            TextAnchor.MiddleCenter, new Vector2(0.60f, 0.50f), new Vector2(0.64f, 0.60f), headingFont, DeepGreen, 1.8f);
+        buyLivesButtonText = CreateOutlinedText(buyBtn.transform, "Cost Text", "200 COINS", 19, Cream,
+            TextAnchor.MiddleCenter, new Vector2(0.57f, 0.50f), new Vector2(0.64f, 0.70f), headingFont, DeepGreen, 1.8f);
 
-        // Status text below button (e.g. "NOT ENOUGH COINS" or current balance)
+        // Status text below button (e.g. "Coins Available: 250")
         buyLivesStatusText = CreateText(card, "Status Text", "", 14, new Color(Navy.r, Navy.g, Navy.b, 0.65f),
-            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.120f), new Vector2(0.85f, 0.12f), bodyFont);
+            TextAnchor.MiddleCenter, new Vector2(0.5f, 0.140f), new Vector2(0.85f, 0.12f), bodyFont);
 
         buyLivesFlyout.SetActive(buyLivesOpen);
         RefreshBuyLivesPanelState();
@@ -1003,7 +1020,7 @@ public sealed class WarfestMainMenu : MonoBehaviour
 
         if (buyLivesButtonBg != null)
         {
-            buyLivesButtonBg.color = canBuy ? Color.white : new Color(0.52f, 0.55f, 0.52f, 1f);
+            buyLivesButtonBg.color = canBuy ? new Color(0.28f, 0.78f, 0.16f, 1f) : new Color(0.52f, 0.55f, 0.52f, 1f);
         }
         if (buyLivesButtonText != null)
         {
